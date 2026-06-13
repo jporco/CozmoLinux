@@ -1,0 +1,22 @@
+[Unit]
+Description=Cozmo Guardian — connection and health monitor
+After=network-online.target cozmo-companion.service
+Wants=cozmo-companion.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Nice=10
+WorkingDirectory=@INSTALL_DIR@
+Environment=PYTHONPATH=@INSTALL_DIR@/src
+Environment=COZMO_COMPANION_ROOT=@INSTALL_DIR@
+EnvironmentFile=-@INSTALL_DIR@/config.env
+EnvironmentFile=-@INSTALL_DIR@/config.guardian.env
+ExecStart=@INSTALL_DIR@/.venv/bin/python -m cozmo_companion.guardian
+Restart=on-failure
+RestartSec=120
+StandardOutput=append:@INSTALL_DIR@/guardian.log
+StandardError=append:@INSTALL_DIR@/guardian.log
+
+[Install]
+WantedBy=default.target

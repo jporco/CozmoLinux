@@ -1,0 +1,880 @@
+"""Testes motor_cozmo — porta PyCozmo."""
+
+import os
+import threading
+import time
+import unittest
+from unittest.mock import MagicMock, call, patch
+
+from pycozmo import robot
+
+from cozmo_companion.core import motor_cozmo as motor
+from cozmo_companion.core.motor_cozmo import (
+    angulo_cabeca_neutro,
+    animar_grupo,
+    base_proc_hz,
+    cabeca_base_neutra,
+    enviar_oled,
+    instalar_anim_id_seguro,
+    instalar_charger_display_guard,
+    modo_base_olhos,
+    modo_charger_oled,
+    modo_tts_preparar,
+    olhos_procedural,
+    _normalizar_anim_id,
+)
+
+
+class TestMotorCozmo(unittest.TestCase):
+    def setUp(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        motor._charger_keeper_ativo = False
+        motor._charger_slow_anim = False
+        motor._charger_stream_sessao = False
+        motor._charger_oled_nome = None
+        motor._ultimo_charger_play = 0.0
+        motor._charger_replay_pendente = False
+        motor._charger_replay_em_voo = False
+        motor._charger_worker_thread = None
+        motor._charger_worker_thread = None
+        motor._charger_worker_stop.clear()
+        motor._sono_oled_texto_ativo = False
+        motor._modo_sono_oled = False
+        motor._base_oled_loop_hold_ate = 0.0
+        motor._base_oled_loop_hold_desde = 0.0
+
+    def test_sono_oled_texto_bloqueia_ppclip(self) -> None:
+        cli = MagicMock()
+        cli.animation_groups = {"Sleeping": MagicMock(), "IdleOnCharger": MagicMock()}
+        with patch.dict(
+            os.environ,
+            {"SONO_TELA_ESCURA": "0", "COZMO_SONO_OLED_TEXTO": "1"},
+        ):
+            with patch(
+                "cozmo_companion.core.anims.pool_sono_oled_base",
+                return_value=["Sleeping"],
+            ):
+                self.assertTrue(motor.sono_oled_usa_texto())
+                motor.ativar_sono_oled_texto(cli)
+                self.assertTrue(motor.sono_oled_texto_ativo())
+                self.assertTrue(motor.base_oled_loop_segurado())
+                cli.play_anim_group.assert_called_with("Sleeping")
+                self.assertFalse(motor.iniciar_loop_clip_base(cli))
+                motor.desativar_sono_oled_texto()
+                self.assertFalse(motor.sono_oled_texto_ativo())
+        min_a = robot.MIN_HEAD_ANGLE.radians
+        max_a = robot.MAX_HEAD_ANGLE.radians
+        meio = (max_a + min_a) / 2.0
+        neutro = angulo_cabeca_neutro()
+        self.assertGreater(neutro, meio)
+
+    def test_cabeca_base_neutra_so_se_precisa(self) -> None:
+        cli = MagicMock()
+        cli.head_angle.radians = angulo_cabeca_neutro()
+        with patch.dict("os.environ", {"BASE_HEAD_RESET": "1"}):
+            cabeca_base_neutra(cli)
+        cli.set_head_angle.assert_not_called()
+
+    def test_modo_charger_carga_cheia_stream_awake(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        ac.thread = MagicMock(is_alive=lambda: True)
+        cli.animation_groups = {
+            "IdleOnCharger": MagicMock(),
+            "NeutralFace": MagicMock(),
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_BASE_OLED_CHARGER_FULL": "1",
+                "COZMO_BASE_KEEPER_VIVO": "0",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_CHARGER_STREAM_NA_CHEIA": "1",
+                "COZMO_CHARGER_AWAKE_IDLE": "IdleOnCharger",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=True,
+                ):
+                    with patch(
+                        "cozmo_companion.core.charger.base_oled_estavel",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.motor_cozmo._ativar_charger_stream",
+                            return_value=True,
+                        ) as stream:
+                            with patch(
+                                "cozmo_companion.core.charger.carga_firmware_pausada",
+                                return_value=True,
+                            ):
+                                with patch(
+                                    "cozmo_companion.core.charger.carregando",
+                                    return_value=False,
+                                ):
+                                    with patch(
+                                        "cozmo_companion.core.charger.em_base",
+                                        return_value=True,
+                                    ):
+                                        with patch(
+                                            "cozmo_companion.core.charger.bateria_pct",
+                                            return_value=100,
+                                        ):
+                                            with patch(
+                                                "cozmo_companion.core.motor_cozmo._charger_worker_vivo",
+                                                return_value=False,
+                                            ):
+                                                modo_charger_oled(cli, forcar=True)
+        stream.assert_called_once()
+        args = stream.call_args[0]
+        self.assertEqual(args[1], "IdleOnCharger")
+
+    def test_cancel_guard_permite_worker(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        cli = MagicMock()
+        orig = MagicMock()
+        cli.cancel_anim = orig
+        motor._charger_worker_thread = threading.current_thread()
+        with patch.dict("os.environ", {"COZMO_CHARGER_PLAY_STREAM": "1"}):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                motor._cozmo_cancel_guard = False
+                cli._cozmo_cancel_guard = False
+                motor.instalar_guard_cancel_anim_base(cli)
+                cli.cancel_anim()
+        orig.assert_called_once()
+        motor._charger_worker_thread = None
+
+    def test_oled_charger_vivo_com_keeper(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        cli = MagicMock()
+        motor._charger_stream_sessao = True
+        motor._charger_keeper_ativo = True
+        th = MagicMock(is_alive=lambda: True)
+        with patch.object(motor, "_display_thread", th):
+            with patch.object(motor, "_display_lock"):
+                self.assertTrue(motor.oled_charger_vivo(cli))
+        motor._charger_keeper_ativo = False
+        motor._charger_stream_sessao = False
+        motor._charger_worker_thread = None
+
+    def test_stream_estavel_com_keeper_sem_worker(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        cli = MagicMock()
+        motor._charger_stream_sessao = True
+        th = MagicMock(is_alive=lambda: True)
+        with patch.dict(
+            "os.environ",
+            {"COZMO_CHARGER_PLAY_STREAM": "0"},
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                with patch.object(motor, "_display_thread", th):
+                    with patch.object(motor, "_display_lock"):
+                        self.assertTrue(motor._stream_oled_estavel(cli))
+        motor._charger_stream_sessao = False
+
+    def test_ligar_oled_base_preso_usa_charger(self) -> None:
+        from cozmo_companion.core.motor_cozmo import ligar_oled_base
+
+        cli = MagicMock()
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.modo_charger_oled",
+                return_value=True,
+            ) as charger:
+                ligar_oled_base(cli, preso_na_base=True)
+        charger.assert_called_once()
+
+    def test_candidatos_charger_carga_cheia_olhos_acordados(self) -> None:
+        from cozmo_companion.core.motor_cozmo import _candidatos_charger_oled
+
+        cli = MagicMock()
+        cli.animation_groups = {
+            "IdleOnCharger": MagicMock(),
+            "NeutralFace": MagicMock(),
+            "InteractWithFaceTrackingIdle": MagicMock(),
+        }
+        with patch.dict(
+            "os.environ",
+            {"COZMO_CHARGER_AWAKE_IDLE": "InteractWithFaceTrackingIdle"},
+        ):
+            with patch("cozmo_companion.core.charger.em_base", return_value=True):
+                with patch(
+                    "cozmo_companion.core.charger.bateria_pct", return_value=100
+                ):
+                    cand = _candidatos_charger_oled(
+                        cli, carga_pausada=True, carregando_agora=False
+                    )
+        self.assertEqual(cand[0], "IdleOnCharger")
+        self.assertNotEqual(cand[0], "InteractWithFaceTrackingIdle")
+
+    def test_candidatos_100pct_carregando_olhos_acordados(self) -> None:
+        from cozmo_companion.core.motor_cozmo import _candidatos_charger_oled
+
+        cli = MagicMock()
+        cli.animation_groups = {
+            "IdleOnChargerCharging": MagicMock(),
+            "IdleOnCharger": MagicMock(),
+        }
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_CHARGER_AWAKE_IDLE": "InteractWithFaceTrackingIdle",
+                "BATTERY_CHARGE_STOP_PCT": "90",
+            },
+        ):
+            with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
+                with patch(
+                    "cozmo_companion.core.charger.em_modo_carga_base",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.charger.bateria_pct", return_value=50
+                    ):
+                        cand = _candidatos_charger_oled(
+                            cli, carga_pausada=False, carregando_agora=True
+                        )
+        self.assertEqual(cand[0], "IdleOnChargerCharging")
+
+    def test_modo_base_olhos_carga_cheia_usa_charger_stream(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        ac.queue.is_empty.return_value = True
+        ac.thread = MagicMock(is_alive=lambda: True)
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_BASE_OLED_CHARGER": "1",
+                "COZMO_BASE_OLED_CHARGER_FULL": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_CHARGER_OLED_KEEPER": "0",
+            },
+        ):
+            with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo.ligar_oled_base",
+                    ) as ligar:
+                        modo_base_olhos(cli)
+        ligar.assert_called_once_with(cli, forcar=False, preso_na_base=True)
+        ac.enable_procedural_face.assert_not_called()
+
+    def test_base_oled_usa_proc_vivo_false_com_stream_off(self) -> None:
+        from cozmo_companion.core.motor_cozmo import base_oled_usa_proc_vivo
+
+        cli = MagicMock()
+        with patch.dict(
+            "os.environ",
+            {"COZMO_CHARGER_PLAY_STREAM": "0", "COZMO_BASE_OLED_MODE": "proc"},
+        ):
+            with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
+                self.assertFalse(base_oled_usa_proc_vivo(cli))
+
+    def test_base_oled_usa_pulse_off_carga_cheia_stream(self) -> None:
+        from cozmo_companion.core.motor_cozmo import (
+            base_oled_usa_proc_vivo,
+            base_oled_usa_pulse,
+        )
+
+        cli = MagicMock()
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_BASE_OLED_CHARGER_FULL": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_BASE_PULSE_PROC": "1",
+            },
+        ):
+            with patch("cozmo_companion.core.charger.em_base", return_value=True):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=True,
+                ):
+                    self.assertFalse(base_oled_usa_proc_vivo(cli))
+                    self.assertFalse(base_oled_usa_pulse(cli))
+
+    def test_modo_base_olhos_direto_sem_flood(self) -> None:
+        cli = MagicMock()
+        cli.head_angle.radians = robot.MIN_HEAD_ANGLE.radians
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        import cozmo_companion.core.motor_cozmo as motor
+
+        motor._ultimo_pulse_base = 0.0
+        with patch.dict(
+            "os.environ",
+            {"BASE_HEAD_RESET": "1", "COZMO_BASE_OLED_MODE": "direct"},
+        ):
+            with patch(
+                "cozmo_companion.display.rosto.pkt_rosto_procedural",
+                return_value=MagicMock(),
+            ):
+                modo_base_olhos(cli)
+        ac.enable_animations.assert_called_with(False)
+        cli.conn.send.assert_called()
+        cli.set_head_angle.assert_not_called()
+
+    def test_enviar_oled_fila(self) -> None:
+        cli = MagicMock()
+        pkt = MagicMock()
+        with patch.dict(
+            "os.environ",
+            {"COZMO_OLED_DIRECT": "0", "COZMO_BASE_OLED_MODE": "anim"},
+        ):
+            enviar_oled(cli, pkt)
+        cli.anim_controller.display_image.assert_called_with(pkt)
+
+    def test_enviar_audio_direto_sem_flood(self) -> None:
+        cli = MagicMock()
+        pkt = MagicMock()
+        ac = cli.anim_controller
+        ac.animations_enabled = True
+        ac.procedural_face_enabled = False
+        with patch.dict("os.environ", {"COZMO_BASE_OLED_MODE": "direct"}):
+            from cozmo_companion.core.motor_cozmo import enviar_audio_fila
+
+            enviar_audio_fila(cli, pkt)
+        ac.enable_animations.assert_called_with(False)
+        self.assertNotIn(
+            call(True),
+            ac.enable_animations.call_args_list,
+        )
+        sent = [c.args[0] for c in cli.conn.send.call_args_list]
+        self.assertIn(pkt, sent)
+
+    def test_base_proc_hz_respeita_config(self) -> None:
+        with patch.dict("os.environ", {"COZMO_BASE_PROC_HZ": "2"}):
+            self.assertEqual(base_proc_hz(), 2.0)
+
+    def test_modo_tts_preparar_charger_nao_desliga_anim(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.procedural_face_enabled = False
+        ac.animations_enabled = True
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_MODE": "proc", "COZMO_BASE_OLED_CHARGER_FULL": "1"},
+        ):
+            with patch(
+                "cozmo_companion.core.charger.em_base",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                    return_value=True,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                        return_value=True,
+                    ):
+                        modo_tts_preparar(cli)
+        self.assertNotIn(call(True), ac.enable_animations.call_args_list)
+
+    def test_modo_tts_preparar_direto_sem_flood(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.procedural_face_enabled = False
+        ac.animations_enabled = False
+        with patch.dict("os.environ", {"COZMO_BASE_OLED_MODE": "direct"}):
+            from cozmo_companion.core.motor_cozmo import modo_tts_preparar
+
+            modo_tts_preparar(cli)
+        self.assertNotIn(
+            call(True),
+            ac.enable_animations.call_args_list,
+        )
+
+    def test_modo_charger_stream_liga_anim(self) -> None:
+        cli = MagicMock()
+        cli._next_anim_id = 250
+        cli.animation_groups = {"IdleOnCharger": MagicMock()}
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        ac.thread = MagicMock(is_alive=lambda: True)
+        ac.animations_enabled = True
+        ac.queue.is_empty.return_value = True
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_BASE_OLED_CHARGER_FULL": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_CHARGER_OLED_KEEPER": "0",
+                "COZMO_CHARGER_SLOW_ANIM": "0",
+                "COZMO_BASE_KEEPER_VIVO": "0",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.charger.carga_firmware_pausada",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.charger.carregando",
+                            return_value=True,
+                        ):
+                            with patch("cozmo_companion.core.charger.em_base", return_value=True):
+                                with patch(
+                                    "cozmo_companion.core.charger.bateria_pct",
+                                    return_value=50,
+                                ):
+                                    with patch(
+                                        "cozmo_companion.core.motor_cozmo.iniciar_loop_charger",
+                                    ):
+                                        with patch(
+                                            "cozmo_companion.core.motor_cozmo._garantir_charger_worker",
+                                            return_value=True,
+                                        ) as worker:
+                                            modo_charger_oled(cli, forcar=True)
+        worker.assert_called()
+
+    def test_replay_charger_respeita_fila(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        ac.queue.is_empty.return_value = False
+        motor._ultimo_charger_play = 0.0
+        with patch.dict("os.environ", {"COZMO_CHARGER_PLAY_STREAM": "0"}):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                ok = motor._replay_anim_charger(cli, "IdleOnCharger")
+        self.assertTrue(ok)
+        cli.play_anim_group.assert_not_called()
+
+    def test_pulso_carga_cheia_charger_nao_desliga_anim(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.playing_animation = True
+        ac.playing_audio = False
+        import cozmo_companion.core.motor_cozmo as motor
+
+        motor._ultimo_wake_carga_cheia = 0.0
+        motor._charger_keeper_ativo = True
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_FULL_CHARGE_WAKE": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_CHARGER_OLED_KEEPER": "1",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.charger.carga_firmware_pausada",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                    return_value=True,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo._tick_charger_oled",
+                        return_value=True,
+                    ) as tick:
+                        from cozmo_companion.core.motor_cozmo import pulso_oled_carga_cheia
+
+                        pulso_oled_carga_cheia(cli)
+        ac.enable_animations.assert_not_called()
+        tick.assert_called_once_with(cli)
+
+    def test_modo_charger_handshake_sem_flood(self) -> None:
+        cli = MagicMock()
+        cli.animation_groups = {"IdleOnCharger": MagicMock()}
+        ac = cli.anim_controller
+        ac.playing_animation = False
+        ac.playing_audio = False
+        ac.thread = None
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_MODE": "proc",
+                "COZMO_BASE_OLED_CHARGER_FULL": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "0",
+                "COZMO_CHARGER_OLED_KEEPER": "1",
+                "COZMO_CHARGER_SLOW_ANIM": "0",
+                "COZMO_BASE_KEEPER_VIVO": "0",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.charger.carga_firmware_pausada",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.charger.carregando",
+                            return_value=False,
+                        ):
+                            with patch("cozmo_companion.core.charger.em_base", return_value=True):
+                                with patch(
+                                    "cozmo_companion.core.charger.bateria_pct",
+                                    return_value=100,
+                                ):
+                                    with patch(
+                                        "cozmo_companion.core.motor_cozmo.base_oled_usa_proc_vivo",
+                                        return_value=False,
+                                    ):
+                                        with patch(
+                                            "cozmo_companion.core.motor_cozmo.iniciar_loop_charger",
+                                        ):
+                                            modo_charger_oled(cli, forcar=True)
+        ac.enable_animations.assert_called_with(False)
+        cli.play_anim_group.assert_not_called()
+
+    def test_animar_base_bloqueada_modo_direto(self) -> None:
+        cli = MagicMock()
+        with patch.dict("os.environ", {"COZMO_BASE_OLED_MODE": "direct"}):
+            self.assertFalse(
+                animar_grupo(cli, "DriveOffCharger", na_base=True, procedural_antes=True)
+            )
+        cli.play_anim_group.assert_not_called()
+
+    def test_guard_oled_nao_limpa_na_base(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        pkt = MagicMock(image=b"\xaa\xbb")
+        ac.last_image_pkt = pkt
+        cleared = []
+
+        def _orig_clear() -> None:
+            cleared.append(1)
+            ac.last_image_pkt = MagicMock(image=b"\x3f\x3f")
+
+        ac._clear_last_image_pkt = _orig_clear
+        ac._on_animation_ended = MagicMock()
+        ac._cozmo_charger_guard = False
+        ac._cozmo_anim_base_guard = False
+        with patch(
+            "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+            return_value=True,
+        ):
+            instalar_charger_display_guard(cli)
+            ac._clear_last_image_pkt()
+            ac._on_animation_ended(cli, None)
+        self.assertEqual(cleared, [])
+        self.assertIs(ac.last_image_pkt, pkt)
+
+    def test_anim_loop_auto_com_stream_off(self) -> None:
+        import cozmo_companion.core.motor_cozmo as motor
+
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_CHARGER_PLAY_STREAM": "0",
+                "COZMO_BASE_OLED_MODE": "proc",
+            },
+        ):
+            self.assertTrue(motor._base_oled_anim_loop_ativo())
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "auto", "COZMO_CHARGER_PLAY_STREAM": "1"},
+        ):
+            self.assertFalse(motor._base_oled_anim_loop_ativo())
+
+    def test_vigiar_nao_desliga_anim_com_loop_keeper(self) -> None:
+        from cozmo_companion.core.motor_cozmo import vigiar_flood_base
+
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.thread = None
+        ac.procedural_face_enabled = False
+        ac.animations_enabled = False
+        import cozmo_companion.core.motor_cozmo as motor
+
+        motor._charger_keeper_ativo = True
+        motor._charger_stream_sessao = True
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_CHARGER_PLAY_STREAM": "0",
+                "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_BASE_KEEPER_VIVO": "0",
+            },
+        ):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.rx_link_ok",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.motor_cozmo._clip_loop_vivo",
+                            return_value=False,
+                        ):
+                            with patch(
+                                "cozmo_companion.core.motor_cozmo.base_oled_loop_segurado",
+                                return_value=False,
+                            ):
+                                with patch(
+                                    "cozmo_companion.core.motor_cozmo._garantir_base_oled_anim_loop",
+                                    return_value=True,
+                                ) as garantir:
+                                    vigiar_flood_base(cli)
+        garantir.assert_called_once_with(cli)
+        ac.enable_animations.assert_not_called()
+
+    def test_vigiar_nao_mata_clip_keeper_carga_cheia(self) -> None:
+        from cozmo_companion.core.motor_cozmo import vigiar_flood_base
+
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.thread = None
+        ac.procedural_face_enabled = False
+        ac.animations_enabled = False
+        with patch.dict("os.environ", {"COZMO_CHARGER_PLAY_STREAM": "0"}):
+            with patch(
+                "cozmo_companion.core.motor_cozmo.rx_link_ok",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.keeper_base_ativo",
+                    return_value=True,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.motor_cozmo.base_oled_carga_cheia_ativo",
+                            return_value=True,
+                        ):
+                            with patch(
+                                "cozmo_companion.core.motor_cozmo._parar_display_keeper"
+                            ) as parar:
+                                vigiar_flood_base(cli)
+        parar.assert_not_called()
+
+    def test_normalizar_anim_id_wrap_256(self) -> None:
+        cli = MagicMock()
+        cli._next_anim_id = 256
+        aid = _normalizar_anim_id(cli)
+        self.assertEqual(aid, 1)
+        self.assertEqual(cli._next_anim_id, 1)
+
+    def test_instalar_anim_id_seguro_wrap(self) -> None:
+        cli = MagicMock()
+        cli._cozmo_anim_id_seguro = False
+        cli._next_anim_id = 255
+        chamadas: list[int] = []
+
+        def orig(_pp: object) -> None:
+            chamadas.append(int(cli._next_anim_id))
+            cli._next_anim_id = int(cli._next_anim_id) + 1
+
+        cli.play_anim_ppclip = orig
+        instalar_anim_id_seguro(cli)
+        pp = object()
+        cli.play_anim_ppclip(pp)
+        cli.play_anim_ppclip(pp)
+        self.assertEqual(chamadas[0], 255)
+        self.assertEqual(chamadas[1], 1)
+        self.assertEqual(cli._next_anim_id, 2)
+
+    def test_executar_ppclip_core_normaliza_256(self) -> None:
+        cli = MagicMock()
+        cli._next_anim_id = 256
+        usados: list[int] = []
+
+        def core(_pp: object) -> None:
+            usados.append(int(cli._next_anim_id))
+            cli._next_anim_id = int(cli._next_anim_id) + 1
+
+        cli._cozmo_ppclip_core = core
+        motor._executar_ppclip_core(cli, object())
+        self.assertEqual(usados, [1])
+        self.assertEqual(cli._next_anim_id, 2)
+
+    def test_variar_clip_bloqueado_quando_oled_segurado(self) -> None:
+        motor.segurar_base_oled_loop(30.0)
+        try:
+            cli = MagicMock()
+            cli.animation_groups = {"IdleOnCharger": object()}
+            with patch.object(motor, "_base_anim_loop_vivo", return_value=False):
+                with patch.object(motor, "base_oled_usa_charger", return_value=True):
+                    with patch.object(motor, "_charger_stream_sessao", True):
+                        self.assertFalse(motor.variar_clip_base_oled(cli))
+        finally:
+            motor._base_oled_loop_hold_ate = 0.0
+            motor._base_oled_loop_hold_desde = 0.0
+
+    @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
+    def test_detectar_cozmo01_timeout_oled(
+        self,
+        _charger,
+        _hold,
+        _rx,
+        _ping,
+    ) -> None:
+        motor._ultimo_exibir_clip_em = time.monotonic() - 40.0
+        cli = MagicMock()
+        self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
+        motor._ultimo_exibir_clip_em = time.monotonic()
+        self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
+
+    @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
+    def test_detectar_cozmo01_rx_morto(self, _hold, _rx, _ping) -> None:
+        motor._rx_off_desde = time.monotonic() - 12.0
+        cli = MagicMock()
+        self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
+        motor._rx_off_desde = time.monotonic()
+        self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
+        motor._rx_off_desde = 0.0
+
+    @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._sequencia_recuperar_cozmo01", return_value=True)
+    def test_recuperar_cozmo01_respeita_cooldown(self, seq, _ping) -> None:
+        cli = MagicMock()
+        monitor = MagicMock()
+        motor._ultimo_recuperar_cozmo01 = time.monotonic()
+        self.assertFalse(motor.recuperar_cozmo01_auto(cli, monitor))
+        seq.assert_not_called()
+        self.assertTrue(motor.recuperar_cozmo01_auto(cli, monitor, forcar=True))
+        seq.assert_called_once()
+
+    def test_segurar_hold_stack(self) -> None:
+        motor._base_oled_loop_hold_ate = 0.0
+        motor._base_oled_loop_hold_desde = 0.0
+        try:
+            with patch.dict(
+                os.environ,
+                {"COZMO_BASE_OLED_HOLD_MAX_S": "10", "COZMO_BASE_OLED_HOLD_STACK": "2"},
+            ):
+                motor.segurar_base_oled_loop(8.0)
+                t0 = motor._base_oled_loop_hold_ate
+                motor.segurar_base_oled_loop(12.0)
+                self.assertGreater(motor._base_oled_loop_hold_ate, t0)
+                self.assertLessEqual(
+                    motor._base_oled_loop_hold_ate,
+                    motor._base_oled_loop_hold_desde + 20.0,
+                )
+        finally:
+            motor._base_oled_loop_hold_ate = 0.0
+            motor._base_oled_loop_hold_desde = 0.0
+
+    def test_pode_tocar_anim_direto_bloqueia_fila(self) -> None:
+        cli = MagicMock()
+        cli.anim_controller.playing_audio = False
+        self.assertFalse(
+            motor.pode_tocar_anim_direto(cli, fila_ocupada=True, falando=False)
+        )
+        self.assertTrue(
+            motor.pode_tocar_anim_direto(cli, fila_ocupada=False, falando=False)
+        )
+
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._exibir_clip_base", return_value=True)
+    def test_tocar_clip_base_seguro(self, exibir, _charger) -> None:
+        cli = MagicMock()
+        self.assertTrue(motor.tocar_clip_base_seguro(cli, "CodeLabBlink"))
+        exibir.assert_called_once()
+        self.assertFalse(motor.tocar_clip_base_seguro(cli, "DriveStuckOffCharger"))
+
+    @patch("cozmo_companion.core.motor_cozmo.tocar_clip_base_seguro", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
+    def test_animar_grupo_base_usa_ppclip(self, _charger, tocar) -> None:
+        cli = MagicMock()
+        self.assertTrue(
+            animar_grupo(cli, "CodeLabBlink", na_base=True, procedural_antes=True)
+        )
+        tocar.assert_called_once_with(cli, "CodeLabBlink")
+
+
+class TestOledAntiEstatico(unittest.TestCase):
+    def test_oled_estatico_demais(self) -> None:
+        cli = MagicMock()
+        cli.anim_controller.playing_animation = True
+        cli.anim_controller.playing_audio = False
+        cli.anim_controller.queue.is_empty.return_value = True
+        with patch.dict(os.environ, {"COZMO_OLED_MAX_ESTATICO_S": "18"}):
+            motor._ultimo_exibir_clip_em = time.monotonic() - 20.0
+            with patch.object(motor, "rx_link_ok", return_value=True):
+                self.assertFalse(motor._oled_estatico_demais(cli))
+            motor._ultimo_exibir_clip_em = time.monotonic() - 20.0
+            cli.anim_controller.playing_animation = False
+            with patch.object(motor, "base_oled_loop_segurado", return_value=False):
+                self.assertTrue(motor._oled_estatico_demais(cli))
+            motor._ultimo_exibir_clip_em = time.monotonic()
+            self.assertFalse(motor._oled_estatico_demais(cli))
+
+    @patch("cozmo_companion.core.motor_cozmo._exibir_clip_base", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._garantir_base_oled_anim_loop", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._base_oled_anim_loop_ativo", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._oled_tx_permitido", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._oled_anim_vivo", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
+    def test_forcar_movimento_oled_base(
+        self, _hold, _anim, _charger, _tx, _loop_on, _g, _ex
+    ) -> None:
+        cli = MagicMock()
+        cli.animation_groups = {"CodeLabBlink": None}
+        cli.anim_controller.playing_audio = False
+        cli.anim_controller.playing_animation = False
+        cli.anim_controller.queue.is_empty.return_value = True
+        with patch.object(motor, "_escolher_proximo_clip_base", return_value="CodeLabBlink"):
+            self.assertTrue(motor._forcar_movimento_oled_base(cli))
+
+
+if __name__ == "__main__":
+    unittest.main()

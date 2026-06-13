@@ -1,0 +1,24 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local config and runtime (never commit secrets)
+config.env
+config.guardian.env
+data/*
+!data/.gitkeep
+
+# Logs
+*.log
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# OS
+.DS_Store

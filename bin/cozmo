@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Volume do Cozmo (áudio/TTS na base).
+#
+# Uso:
+#   cozmo       — volume atual (%)
+#   cozmo +     — sobe ~10% (65535 máx)
+#   cozmo -     — desce ~10%
+#
+# Persiste COZMO_VOLUME em config.env; se o companheiro estiver rodando,
+# grava data/volume.txt e o serviço aplica em ~0,25s (set_volume imediato).
+#
+# PATH: export PATH="$HOME/CozmoLinux/bin:$PATH"
+# ou: ln -sf "$(pwd)/bin/cozmo" ~/.local/bin/cozmo  (setup.sh faz isso)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG="${ROOT}/config.env"
+VOLUME_FILE="${COZMO_VOLUME_FILE:-${ROOT}/data/volume.txt}"
+MAX=65535
+DEFAULT=12000
+# ~10% do máximo por passo (+/-); override: COZMO_VOLUME_STEP=5000
+STEP="${COZMO_VOLUME_STEP:-6553}"
+
+_volume_raw() {
+  if [[ -f "$CONFIG" ]] && grep -qE '^COZMO_VOLUME=' "$CONFIG"; then
+    grep -E '^COZMO_VOLUME=' "$CONFIG" | tail -1 | cut -d= -f2- | tr -d ' \r'
+    return
+  fi
+  echo "$DEFAULT"
+}
+
+_volume_clamp() {
+  local v="$1"
+  if (( v < 0 )); then echo 0
+  elif (( v > MAX )); then echo "$MAX"
+  else echo "$v"
+  fi
+}
+
+_volume_percent() {
+  local v="$1"
+  echo $(( (v * 100 + MAX / 2) / MAX ))
+}
+
+_persist_config() {
+  local v="$1"
+  mkdir -p "$(dirname "$CONFIG")"
+  if [[ ! -f "$CONFIG" ]]; then
+    echo "COZMO_VOLUME=$v" >>"$CONFIG"
+    return
+  fi
+  if grep -qE '^COZMO_VOLUME=' "$CONFIG"; then
+    sed -i "s/^COZMO_VOLUME=.*/COZMO_VOLUME=$v/" "$CONFIG"
+  else
+    echo "COZMO_VOLUME=$v" >>"$CONFIG"
+  fi
+}
+
+_apply_hot() {
+  local v="$1"
+  mkdir -p "$(dirname "$VOLUME_FILE")"
+  printf '%s\n' "$v" >"$VOLUME_FILE"
+}
+
+_show() {
+  local v pct
+  v="$(_volume_clamp "$(_volume_raw)")"
+  pct="$(_volume_percent "$v")"
+  echo "Volume Cozmo: ${pct}%"
+}
+
+_adjust() {
+  local delta="$1"
+  local cur novo pct
+  cur="$(_volume_clamp "$(_volume_raw)")"
+  novo="$(_volume_clamp $(( cur + delta )))"
+  if (( novo == cur )); then
+    pct="$(_volume_percent "$novo")"
+    if (( delta > 0 )); then
+      echo "Volume Cozmo: ${pct}% (máximo)"
+    else
+      echo "Volume Cozmo: ${pct}% (mínimo)"
+    fi
+    return 0
+  fi
+  _persist_config "$novo"
+  _apply_hot "$novo"
+  pct="$(_volume_percent "$novo")"
+  echo "Volume Cozmo: ${pct}%"
+}
+
+case "${1:-}" in
+  ''|-h|--help|help)
+    _show
+    ;;
+  '+')
+    _adjust "$STEP"
+    ;;
+  '-')
+    _adjust "-$STEP"
+    ;;
+  *)
+    echo "Uso: cozmo | cozmo + | cozmo -" >&2
+    exit 1
+    ;;
+esac

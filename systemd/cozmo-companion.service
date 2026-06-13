@@ -1,0 +1,29 @@
+[Unit]
+Description=Cozmo companion (voice, charger base, notifications)
+After=network-online.target sound.target graphical-session.target
+Wants=network-online.target graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Nice=19
+CPUWeight=10
+IOWeight=10
+TimeoutStopSec=5
+TimeoutStartSec=120
+WorkingDirectory=@INSTALL_DIR@
+Environment=PYTHONPATH=@INSTALL_DIR@/src
+Environment=COZMO_COMPANION_ROOT=@INSTALL_DIR@
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+EnvironmentFile=-@INSTALL_DIR@/config.env
+EnvironmentFile=-@INSTALL_DIR@/config.guardian.env
+ExecStartPre=/bin/bash -c 'ping -c1 -W2 172.31.1.1 >/dev/null || COZMO_WIFI_SAFE=1 timeout 8 @INSTALL_DIR@/conectar-cozmo.sh || true'
+ExecStart=@INSTALL_DIR@/scripts/cozmo-service-start.sh
+Restart=no
+StandardOutput=append:@INSTALL_DIR@/cozmo-companion.log
+StandardError=append:@INSTALL_DIR@/cozmo-companion.log
+
+[Install]
+WantedBy=default.target

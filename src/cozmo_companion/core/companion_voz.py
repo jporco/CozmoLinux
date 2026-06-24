@@ -58,6 +58,22 @@ REACOES_PERGUNTA = (
     "NeutralFace",
     "InterestedFace",
 )
+REACOES_BARULHO = (
+    "ReactToPokeReaction",
+    "CodeLabAmazed",
+    "CodeLabSurprise",
+    "CodeLabWhoa",
+    "CodeLabWhew",
+    "Hiccup",
+    "InterestedFace",
+)
+REACOES_LATIDO = (
+    "CodeLabDog",
+    "CodeLabCat",
+    "CodeLabChicken",
+    "ReactToPokeReaction",
+    "InterestedFace",
+)
 class CompanionVoz:
     """Mixin — métodos de voz; espera atributos do Companion principal."""
 
@@ -81,6 +97,8 @@ class CompanionVoz:
         self._ultima_notif_titulo = ""
         self._cooldown_voz_base_ate = 0.0
         self._stt_base_wake_ate = 0.0
+        self._ultimo_barulho = 0.0
+        self._ultimo_latido = 0.0
         self.ouvinte: Ouvinte | None = None
         self._ouvinte_notif: OuvinteNotificacoes | None = None
         self._voz_cmd = Path(
@@ -511,9 +529,72 @@ class CompanionVoz:
                 self._ao_wake_word()
             elif item[0] == "pergunta":
                 self._ao_pergunta_voz(item[1], forcar=True)
+            elif item[0] == "som":
+                self._tratar_som_ouvido(item[1], item[2])
+
+    def _stt_receber_som(self, tipo: str, valor: str | float) -> None:
+        self._stt_fila.put(("som", tipo, valor))
+
+    def _som_reacao_permitido(self) -> bool:
+        if os.environ.get("SOM_REACAO_ENABLED", "1") != "1":
+            return False
+        if self._falando or self._llm_ocupado:
+            return False
+        if self._periodo_quieto_ativo():
+            return False
+        return True
+
+    def _tocar_som_reacao(self, tipo: str) -> bool:
+        from cozmo_companion.core.som_reacao import tocar_som_reacao
+
+        self._monitor_rx.pausar(float(os.environ.get("SOM_REACAO_RX_PAUSE_S", "8")))
+        ok = tocar_som_reacao(
+            self.cli,
+            tipo=tipo,
+            manter_face=self._na_base_efetivo(),
+            volume=self.volume,
+        )
+        quiet = float(os.environ.get("SOM_REACAO_QUIET_S", "2.5"))
+        self._marcar_udp_quieto(quiet, pausar_fila=False)
+        return ok
+
+    def _reagir_barulho(self, nivel: float) -> None:
+        agora = time.monotonic()
+        cooldown = float(os.environ.get("BARULHO_COOLDOWN_S", "10"))
+        if agora - self._ultimo_barulho < cooldown or not self._som_reacao_permitido():
+            return
+        self._ultimo_barulho = agora
+        logger.info("Barulho alto detectado (rms=%.0f) — reacao sonora", nivel)
+        if hasattr(self, "_detector_escuro"):
+            self._detector_escuro.marcar_despertar()
+        self._vida.registrar_interacao(20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base)
+        self._fila.enviar_anim(REACOES_BARULHO, prioridade=True)
+        self._tocar_som_reacao(random.choice(("susto", "curioso")))
+
+    def _reagir_latido(self, texto: str = "") -> None:
+        agora = time.monotonic()
+        cooldown = float(os.environ.get("LATIDO_COOLDOWN_S", "8"))
+        if agora - self._ultimo_latido < cooldown or not self._som_reacao_permitido():
+            return
+        self._ultimo_latido = agora
+        logger.info("Latido detectado — respondendo: %s", texto[:24])
+        self._vida.registrar_interacao(18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base)
+        self._fila.enviar_anim(REACOES_LATIDO, prioridade=True)
+        self._tocar_som_reacao("latido")
+
+    def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:
+        if tipo == "barulho":
+            try:
+                nivel = float(valor)
+            except (TypeError, ValueError):
+                nivel = 0.0
+            self._reagir_barulho(nivel)
+        elif tipo == "latido":
+            self._reagir_latido(str(valor))
 
     def _tratar_texto_ouvido(self, texto: str) -> None:
         if parece_latido(texto):
+            self._reagir_latido(texto)
             return
         if self._wake.processar(texto):
             logger.info("Wake processado: %s", texto)
@@ -769,6 +850,7 @@ class CompanionVoz:
             self.ouvinte = Ouvinte(
                 modelo,
                 self._stt_receber_texto,
+                on_evento=self._stt_receber_som,
                 device=resolver_dispositivo(),
             )
             self.ouvinte.start()

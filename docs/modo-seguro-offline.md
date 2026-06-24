@@ -1,18 +1,21 @@
-# Safe mode — Cozmo offline
+# Modo seguro — Cozmo offline
 
-When Cozmo is off, the companion **does not change your PC Wi-Fi** (your main network stays connected).
+Quando o Cozmo está desligado, o companion **não mexe no Wi-Fi do PC** (node-red, sunshine, tailscale, etc. intactos).
 
-## Behaviour
+## O que mudou
 
-- `COZMO_WIFI_SAFE=1` — only connects to `Cozmo_*` AP if visible in scan
-- `conectar-cozmo.sh` — exit 2 if robot absent; no aggressive Wi-Fi toggling
-- Companion — backoff between retries; sparse offline logs
-- Guardian — Wi-Fi probe only when AP visible
+- `COZMO_WIFI_SAFE=1` — só conecta ao AP `Cozmo_*` se ele aparecer no scan
+- `conectar-cozmo.sh` — exit 2 silencioso se robô ausente; sem `nmcli radio wifi on` agressivo
+- `ExecStartPre` do systemd — removido `nmcli radio wifi on` no boot
+- Companion — backoff 120–600s entre tentativas; log a cada 5 min (não flood)
+- Guardian — Wi-Fi só se AP visível; cooldown 300s; `Restart=on-failure`
+- Notificações — cooldown 45s / 60s na base
+- COZMO01 — cooldown auto 45s (menos agressivo)
 
-## When you turn Cozmo on
+## Quando ligar o Cozmo (3 passos)
 
-1. Dock on charger, lift the arm (screen on)
-2. Wait ~30s for `Cozmo_XXXX` Wi-Fi
-3. Run `./conectar-cozmo.sh` or restart `cozmo-companion.service`
+1. **Liga o Cozmo** — encaixa na base, levanta o braço (telinha acende)
+2. **Aguarda ~30s** — AP Wi-Fi `Cozmo_xxxx` aparece; PC reconecta sozinho
+3. **Pronto** — `cozmo-companion.service` já sobe sozinho; se precisar: `systemctl --user restart cozmo-companion`
 
-No PC reboot required.
+Não precisa reiniciar o PC nem matar outros serviços.

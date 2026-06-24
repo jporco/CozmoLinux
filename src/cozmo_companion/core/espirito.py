@@ -236,10 +236,10 @@ class Espirito:
 
         if acao == Acao.FALA:
             prompts = {
-                Humor.ENTEDIADO: "Como robô entediado, diga uma frase curta pedindo atenção.",
+                Humor.ENTEDIADO: "Como robô entediado, diga uma frase curta pedindo atenção ao porco.",
                 Humor.BRINCALHAO: "Como robô brincalhão, faça uma piada ou brincadeira curta.",
-                Humor.CURIOSO: "Como robô curioso, pergunte algo curto ao usuário.",
-                Humor.CARINHOSO: "Como robô carinhoso, diga algo fofo e curto.",
+                Humor.CURIOSO: "Como robô curioso, pergunte algo curto ao porco.",
+                Humor.CARINHOSO: "Como robô carinhoso, diga algo fofo e curto ao porco.",
                 Humor.ANIMADO: "Como robô animado, comemore algo aleatório em uma frase.",
                 Humor.SONOLENTO: "Como robô com sono, resmungue algo curto e engraçado.",
             }

@@ -26,7 +26,7 @@ class TestNotifHandler(unittest.TestCase):
         host._vida.em_sono = False
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("Firefox", "Nova aba", "")
+        n = Notificacao("Firefox", "", "Nova aba", "")
         with patch.dict(
             os.environ,
             {
@@ -56,7 +56,7 @@ class TestNotifHandler(unittest.TestCase):
         host._vida.em_sono = False
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("Steam", "Update", "corpo")
+        n = Notificacao("Steam", "", "Update", "corpo")
         with patch.dict(
             os.environ,
             {
@@ -96,7 +96,7 @@ class TestNotifHandler(unittest.TestCase):
         host._monitor_rx = MagicMock()
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("Firefox", "Nova aba", "")
+        n = Notificacao("Firefox", "", "Nova aba", "")
         with patch.dict(
             os.environ,
             {
@@ -130,7 +130,7 @@ class TestNotifHandler(unittest.TestCase):
         host._vida.em_sono = False
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("org.telegram.desktop", "Nova msg", "corpo longo")
+        n = Notificacao("org.telegram.desktop", "", "Nova msg", "corpo longo")
         with patch.dict(
             os.environ,
             {
@@ -172,7 +172,7 @@ class TestNotifHandler(unittest.TestCase):
         host._vida.em_sono = False
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("Discord", "x", "")
+        n = Notificacao("Discord", "", "x", "")
         with patch.dict(
             os.environ,
             {"NOTIF_ENABLED": "1", "NOTIF_NA_BASE": "1", "NOTIF_SOM": "0"},
@@ -194,7 +194,7 @@ class TestNotifHandler(unittest.TestCase):
         host._vida.em_sono = True
         host._fila.enviar_notif_resumida.return_value = True
         host._fila.ocupada = False
-        n = Notificacao("Discord", "x", "")
+        n = Notificacao("Discord", "", "x", "")
         with patch.dict(
             os.environ,
             {"NOTIF_ENABLED": "1", "NOTIF_NA_BASE": "1", "COZMO_ESCURO_DESPERTAR_S": "120"},
@@ -210,8 +210,10 @@ class TestNotifHandler(unittest.TestCase):
         host._modo_udp_leve = False
         host._monitor_rx = MagicMock()
         host._ultima_notif = time.monotonic()
+        host._ultima_notif_app = "Discord"
+        host._ultima_notif_titulo = "x"
         host._na_base_efetivo.return_value = True
-        n = Notificacao("Discord", "x", "")
+        n = Notificacao("Discord", "", "x", "")
         with patch.dict(
             os.environ,
             {"NOTIF_ENABLED": "1", "NOTIF_COOLDOWN_S": "60"},

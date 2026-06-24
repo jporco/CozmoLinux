@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Monitor Cozmo ~40 min — bateria, UDP, ping, serviço.
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="/mnt/G/PROJETOS/cozmo-companion"
 LOG="${ROOT}/cozmo-watch-40m.log"
 DUR_S="${1:-2400}"
 END=$(( $(date +%s) + DUR_S ))

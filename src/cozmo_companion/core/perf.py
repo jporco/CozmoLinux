@@ -91,7 +91,7 @@ class MonitorJogo:
     def __init__(self) -> None:
         raw = os.environ.get(
             "GAME_PROCESSES",
-            "your-game.exe,Your Game",
+            "Gw2-64.exe,gw2-64.exe,Guild Wars 2",
         )
         self.processos = [p.strip() for p in raw.split(",") if p.strip()]
         self.gpu_limite = int(os.environ.get("GAME_GPU_PERCENT", "70"))

@@ -16,13 +16,34 @@ from cozmo_companion.guardian.core.policy import EstadoGuardian, decidir, execut
 logger = logging.getLogger("cozmo.guardian")
 
 
-from cozmo_companion.core.paths import install_root
+def _configurar_logging(*, verbose: bool, guardian_log: Path) -> None:
+    nivel = logging.DEBUG if verbose else logging.INFO
+    formato = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+    logging.basicConfig(level=nivel, format=formato._fmt)
+
+    # No systemd, stdout/stderr ja sao anexados em guardian.log pelo unit.
+    # Adicionar FileHandler nesse caso duplica cada linha.
+    if os.environ.get("INVOCATION_ID"):
+        return
+
+    handler = logging.FileHandler(guardian_log, encoding="utf-8")
+    handler.setFormatter(formato)
+    guardian_logger = logging.getLogger("cozmo.guardian")
+    if not any(
+        isinstance(h, logging.FileHandler)
+        and Path(getattr(h, "baseFilename", "")) == guardian_log
+        for h in guardian_logger.handlers
+    ):
+        guardian_logger.addHandler(handler)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Monitor inteligente Cozmo Companion")
     parser.add_argument(
         "--root",
-        default=os.environ.get("COZMO_COMPANION_ROOT", str(install_root())),
+        default=os.environ.get(
+            "COZMO_COMPANION_ROOT", "/mnt/G/PROJETOS/cozmo-companion"
+        ),
     )
     parser.add_argument(
         "--intervalo",
@@ -37,21 +58,11 @@ def main() -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
-    )
-
     root = Path(args.root)
     log_path = Path(args.log or root / "cozmo-companheiro.log")
     guardian_log = root / "guardian.log"
 
-    handler = logging.FileHandler(guardian_log, encoding="utf-8")
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
-    )
-    logging.getLogger("cozmo.guardian").addHandler(handler)
-    logging.getLogger("cozmo.guardian.actions").addHandler(handler)
+    _configurar_logging(verbose=args.verbose, guardian_log=guardian_log)
 
     estado = EstadoGuardian()
     logger.info(

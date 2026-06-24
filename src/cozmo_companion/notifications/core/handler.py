@@ -29,6 +29,8 @@ class _HostNotif(Protocol):
     _fila: "FilaCozmo"
     _vida: "CicloVida"
     _ultima_notif: float
+    _ultima_notif_app: str
+    _ultima_notif_titulo: str
     _falando: bool
     _llm_ocupado: bool
     _modo_udp_leve: bool
@@ -70,10 +72,7 @@ def _grupo_som_notif() -> str:
 def _som_notif_habilitado() -> bool:
     if os.environ.get("NOTIF_SOM", "1") != "1":
         return False
-    return (
-        os.environ.get("NOTIF_SOM_PRIMEIRO", os.environ.get("NOTIF_SINAL_PRIMEIRO", "1"))
-        == "1"
-    )
+    return bool(_grupo_som_notif())
 
 
 def aplicar_notificacao(
@@ -97,6 +96,8 @@ def aplicar_notificacao(
         carregando=carregando,
         ultima_em=host._ultima_notif,
         agora=agora,
+        ultima_app=getattr(host, "_ultima_notif_app", ""),
+        ultima_titulo=getattr(host, "_ultima_notif_titulo", ""),
         rx_ok=rx_ok,
     )
     if not deve_processar(notif, ctx):
@@ -109,7 +110,6 @@ def aplicar_notificacao(
         logger.debug("Notificação [%s] adiada — fila ocupada", notif.app or "?")
         return False
 
-    host._ultima_notif = agora
     na_base = host._na_base_efetivo()
 
     rx_pause = float(os.environ.get("NOTIF_RX_PAUSE_S", "18"))
@@ -162,8 +162,8 @@ def aplicar_notificacao(
         float(os.environ.get("NOTIF_ANIM_S", "2.2")) * 0.35,
     )
     som_s = float(os.environ.get("NOTIF_SOM_S", "0.65")) if som_beep else 0.0
-    margin = float(os.environ.get("NOTIF_HOLD_MARGIN_S", "2.0"))
-    pause_loop = float(os.environ.get("NOTIF_PAUSE_LOOP_S", "12"))
+    margin = float(os.environ.get("NOTIF_HOLD_MARGIN_S", "0.5"))
+    pause_loop = float(os.environ.get("NOTIF_PAUSE_LOOP_S", "4"))
     hold_max = min(
         float(os.environ.get("NOTIF_HOLD_MAX_S", "12")),
         float(os.environ.get("COZMO_BASE_OLED_HOLD_MAX_S", "12")),
@@ -184,7 +184,7 @@ def aplicar_notificacao(
     else:
         _pausar_loop_base(host.cli, na_base)
 
-    fila_pause = float(os.environ.get("NOTIF_FILA_PAUSE_S", "0.35"))
+    fila_pause = float(os.environ.get("NOTIF_FILA_PAUSE_S", "0.1"))
     host._fila.pausar(fila_pause)
 
     ok = host._fila.enviar_notif_resumida(
@@ -198,6 +198,10 @@ def aplicar_notificacao(
         seg_titulo=seg_tit,
         pausar_loop_ja=True,
     )
+    if ok:
+        host._ultima_notif = agora
+        host._ultima_notif_app = (notif.app or "").strip()
+        host._ultima_notif_titulo = (notif.titulo or "").strip()
     if ok and hasattr(host, "_marcar_udp_quieto"):
         host._marcar_udp_quieto(
             float(os.environ.get("NOTIF_UDP_QUIET_S", "10")),

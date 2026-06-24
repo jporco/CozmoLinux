@@ -17,7 +17,12 @@ import sounddevice as sd
 from vosk import KaldiRecognizer, Model
 
 from cozmo_companion.core.ritmo import parece_latido
-from cozmo_companion.voice.mic import nome_dispositivo, resolver_dispositivo
+from cozmo_companion.voice.mic import (
+    ativar_fonte,
+    mic_ocupado_externo,
+    nome_dispositivo,
+    resolver_dispositivo,
+)
 from cozmo_companion.voice.normalizar import normalizar_vosk
 from cozmo_companion.voice.wake import contem_wake, parcial_wake_pronto
 
@@ -69,7 +74,6 @@ class Ouvinte:
         self._rms_limiar = LIMIAR_RMS
         self._loud_rms = LOUD_RMS
         self._ultimo_barulho = 0.0
-        self._ultimo_wake_mic = 0.0
         self._ultimo_latido = 0.0
         self._ultimo_texto = ""
         self._ultimo_texto_em = 0.0
@@ -170,7 +174,51 @@ class Ouvinte:
             logger.info("Ouviu: %s", txt)
         self.callback(txt)
 
-    def _loop(self) -> None:
+    def _deve_capturar(self) -> bool:
+        return (
+            not self._stop.is_set()
+            and not self._paused.is_set()
+            and not mic_ocupado_externo()
+        )
+
+    def _processar_bloco(self, data: bytes) -> None:
+        data = self._para_vosk(data)
+        nivel = _rms(data)
+        agora = time.monotonic()
+
+        if nivel < self._rms_limiar:
+            return
+
+        if self._rec.AcceptWaveform(data):
+            txt = json.loads(self._rec.Result()).get("text", "").strip()
+            if parece_latido(txt) and agora - self._ultimo_latido > 6.0:
+                self._ultimo_latido = agora
+                self._emitir("latido", txt)
+            else:
+                self._entregar_texto(txt, parcial=False)
+        else:
+            partial = json.loads(self._rec.PartialResult()).get("partial", "").strip()
+            min_parcial = int(os.environ.get("STT_PARTIAL_MIN", "2"))
+            if partial and len(partial) >= min_parcial:
+                if parece_latido(partial) and agora - self._ultimo_latido > 6.0:
+                    self._ultimo_latido = agora
+                    self._emitir("latido", partial)
+                elif parcial_wake_pronto(partial):
+                    self._entregar_texto(partial, parcial=True)
+            elif (
+                nivel >= self._loud_rms
+                and agora - self._ultimo_barulho > 12.0
+                and not partial
+            ):
+                self._ultimo_barulho = agora
+                self._emitir("barulho", nivel)
+
+    def _capturar_sessao(self) -> None:
+        retry_s = float(os.environ.get("STT_MIC_RETRY_S", "2.5"))
+        try:
+            ativar_fonte()
+        except Exception:
+            pass
         logger.info(
             "STT escutando [%s] captura=%dHz ch=%d vosk=%dHz rms>=%d",
             self.device_nome,
@@ -187,54 +235,32 @@ class Ouvinte:
             device=self.device,
             callback=self._audio_cb,
         ):
-            while not self._stop.is_set():
-                if self._paused.is_set():
-                    time.sleep(0.3)
-                    continue
+            while self._deve_capturar():
                 try:
                     data = self._audio_q.get(timeout=0.4)
                 except queue.Empty:
-                    agora = time.monotonic()
-                    if agora - self._ultimo_wake_mic > 45.0:
-                        try:
-                            from cozmo_companion.voice.mic import ativar_fonte
-
-                            ativar_fonte()
-                        except Exception:
-                            pass
-                        self._ultimo_wake_mic = agora
                     continue
+                self._processar_bloco(data)
+            while not self._audio_q.empty():
+                try:
+                    self._audio_q.get_nowait()
+                except queue.Empty:
+                    break
 
-                data = self._para_vosk(data)
-                nivel = _rms(data)
-                agora = time.monotonic()
-
-                if nivel < self._rms_limiar:
-                    continue
-
-                if self._rec.AcceptWaveform(data):
-                    txt = json.loads(self._rec.Result()).get("text", "").strip()
-                    if parece_latido(txt) and agora - self._ultimo_latido > 6.0:
-                        self._ultimo_latido = agora
-                        self._emitir("latido", txt)
-                    else:
-                        self._entregar_texto(txt, parcial=False)
-                else:
-                    partial = json.loads(self._rec.PartialResult()).get("partial", "").strip()
-                    min_parcial = int(os.environ.get("STT_PARTIAL_MIN", "2"))
-                    if partial and len(partial) >= min_parcial:
-                        if parece_latido(partial) and agora - self._ultimo_latido > 6.0:
-                            self._ultimo_latido = agora
-                            self._emitir("latido", partial)
-                        elif parcial_wake_pronto(partial):
-                            self._entregar_texto(partial, parcial=True)
-                    elif (
-                        nivel >= self._loud_rms
-                        and agora - self._ultimo_barulho > 12.0
-                        and not partial
-                    ):
-                        self._ultimo_barulho = agora
-                        self._emitir("barulho", nivel)
+    def _loop(self) -> None:
+        retry_s = float(os.environ.get("STT_MIC_RETRY_S", "2.5"))
+        while not self._stop.is_set():
+            if self._paused.is_set() or mic_ocupado_externo():
+                time.sleep(0.35)
+                continue
+            try:
+                self._capturar_sessao()
+            except sd.PortAudioError as exc:
+                logger.warning("STT mic ocupado/indisponível: %s — retry %.1fs", exc, retry_s)
+                time.sleep(retry_s)
+            except Exception as exc:
+                logger.warning("STT stream erro: %s — retry %.1fs", exc, retry_s)
+                time.sleep(retry_s)
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():

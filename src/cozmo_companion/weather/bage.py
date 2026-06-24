@@ -1,4 +1,4 @@
-"""Local weather via Open-Meteo (no API key)."""
+"""Clima de Bagé via Open-Meteo (sem API key)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ import requests
 
 logger = logging.getLogger("cozmo.weather")
 
-BAGE_LAT = -23.5505
-BAGE_LON = -46.6333
-FUSO = os.environ.get("WEATHER_TZ", os.environ.get("BAGE_TZ", "America/Sao_Paulo"))
+BAGE_LAT = -31.3317
+BAGE_LON = -54.1069
+FUSO = "America/Sao_Paulo"
 
 
 @dataclass
@@ -24,9 +24,9 @@ class Clima:
 
 class BageWeather:
     def __init__(self) -> None:
-        self.lat = float(os.environ.get("WEATHER_LAT", os.environ.get("BAGE_LAT", BAGE_LAT)))
-        self.lon = float(os.environ.get("WEATHER_LON", os.environ.get("BAGE_LON", BAGE_LON)))
-        self.cidade = os.environ.get("WEATHER_CITY", os.environ.get("BAGE_CIDADE", "Local"))
+        self.lat = float(os.environ.get("BAGE_LAT", BAGE_LAT))
+        self.lon = float(os.environ.get("BAGE_LON", BAGE_LON))
+        self.cidade = os.environ.get("BAGE_CIDADE", "Bagé")
         self.cache_seg = float(os.environ.get("WEATHER_CACHE_S", 600))
         self._cache: Clima | None = None
 

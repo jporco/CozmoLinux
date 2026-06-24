@@ -12,9 +12,7 @@ from pathlib import Path
 
 logger = logging.getLogger("cozmo.conexao")
 
-from cozmo_companion.core.paths import install_root
-
-ROOT = install_root()
+ROOT = Path(os.environ.get("COZMO_COMPANION_ROOT", "/mnt/G/PROJETOS/cozmo-companion"))
 ROBOT_IP = os.environ.get("COZMO_IP", "172.31.1.1")
 
 _ESTADO_NOME = {1: "IDLE", 2: "CONNECTING", 3: "CONNECTED"}

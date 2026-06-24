@@ -1,4 +1,4 @@
-"""Local time for weather/time replies."""
+"""Hora local de Bagé (RS)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 FUSO = os.environ.get("BAGE_TZ", "America/Sao_Paulo")
-CIDADE = os.environ.get("WEATHER_CITY", os.environ.get("BAGE_CIDADE", "Local"))
+CIDADE = os.environ.get("BAGE_CIDADE", "Bagé")
 
 # Só frases explícitas — evita "agora", "outra coisa", etc.
 _PADROES_HORA = (

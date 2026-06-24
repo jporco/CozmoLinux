@@ -159,6 +159,7 @@ class Companion(CompanionVoz):
         self._ultimo_manter_rosto = 0.0
         self._anim_base_ate = 0.0
         self._ultimo_perception_anim = 0.0
+        self._anim_hist: list[str] = []
         self._recuperador = RecuperadorCozmo01()
         self._ultimo_inplace_proativo = 0.0
         self._anim_travada_desde = 0.0
@@ -352,14 +353,43 @@ class Companion(CompanionVoz):
             no_carregador=self._no_carregador(),
         )
 
-    def _tocar_grupo(self, candidatos: tuple[str, ...], *, prioridade: bool = False) -> None:
+    def _escolher_anim_sem_repetir(
+        self,
+        pool: tuple[str, ...],
+        *,
+        prioridade: bool,
+    ) -> str | None:
+        if not pool:
+            return None
+        if prioridade:
+            return random.choice(pool)
+        janela = max(2, _env_int("COZMO_ANIM_ANTI_REPEAT", 5))
+        recentes = set(self._anim_hist[-janela:])
+        candidatos = [nome for nome in pool if nome not in recentes]
+        if not candidatos:
+            candidatos = list(pool)
+        nome = random.choice(candidatos)
+        self._anim_hist.append(nome)
+        if len(self._anim_hist) > janela * 2:
+            del self._anim_hist[: -janela * 2]
+        return nome
+
+    def _tocar_grupo(self, candidatos: tuple[str, ...], *, prioridade: bool = False) -> bool:
         if self._falando or self._llm_ocupado:
-            return
+            return False
         safety = self._safety_state()
         if not prioridade and not safety.animation_allowed:
-            return
+            return False
         if not prioridade and not self._gov.reservar("anim", prioridade=prioridade):
-            return
+            return False
+        from cozmo_companion.core.motor_cozmo import base_oled_loop_segurado
+
+        if (
+            not prioridade
+            and self._na_base_efetivo()
+            and (self._fila.ocupada or base_oled_loop_segurado() or self.tela.ocupada())
+        ):
+            return False
         disp = set(self.cli.animation_groups.keys())
         ctx = self._ctx_anim()
         # prioridade (carinho, wake): só o pool pedido — não expandir GRUPOS_BASE_VIVO
@@ -372,20 +402,26 @@ class Companion(CompanionVoz):
             )
             if ctx == ContextoAnim.BASE:
                 pool = tuple(c for c in pool if c != "NeutralFace") or pool
-            nome = random.choice(pool) if pool else None
+            nome = self._escolher_anim_sem_repetir(pool, prioridade=prioridade)
         else:
             candidatos = pool_por_contexto(candidatos, ctx)
             if ctx == ContextoAnim.BASE:
                 candidatos = tuple(c for c in candidatos if c != "NeutralFace") or candidatos
-            nome = escolher_ctx(disp, candidatos, ctx)
+            pool = filtrar_por_contexto(
+                candidatos,
+                disp,
+                ctx,
+                sem_som_carga=ctx == ContextoAnim.BASE,
+            )
+            nome = self._escolher_anim_sem_repetir(pool, prioridade=prioridade)
         if not nome:
-            return
+            return False
         from cozmo_companion.core.motor_cozmo import animar_grupo, modo_base_olhos
 
         na_base = ctx != ContextoAnim.MESA
         proc = na_base and self._base_usa_rosto_vivo()
         if not animar_grupo(self.cli, nome, na_base=na_base, procedural_antes=proc):
-            return
+            return False
         agora = time.monotonic()
         hold = float(os.environ.get("COZMO_ANIM_BASE_HOLD_S", "2.5"))
         self._ultimo_anim_udp = agora
@@ -393,6 +429,7 @@ class Companion(CompanionVoz):
         self._monitor_rx.pausar(hold + 2.0)
         if na_base and proc:
             modo_base_olhos(self.cli)
+        return True
 
     # ── carinho / botão ──
 
@@ -652,9 +689,15 @@ class Companion(CompanionVoz):
             modo_base_olhos,
             pulse_rosto_base,
             rx_link_ok,
+            segurar_base_oled_loop,
         )
 
-        expirar_hold_oled_base(self.cli)
+        if self._fila.ocupada or self.tela.ocupada():
+            if self.tela.ocupada():
+                restante = max(0.5, self.tela._ate - time.monotonic() + 1.5)
+                segurar_base_oled_loop(restante)
+        else:
+            expirar_hold_oled_base(self.cli)
         if base_oled_loop_segurado() or self._fila.ocupada:
             return
 
@@ -952,6 +995,20 @@ class Companion(CompanionVoz):
         cozmo01: bool = False,
     ) -> bool:
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
+        if reset_cozmo01 and self._na_base_efetivo():
+            from cozmo_companion.core.motor_cozmo import (
+                renovar_sessao_base_oled,
+                rx_link_ok,
+            )
+
+            if renovar_sessao_base_oled(
+                self.cli, self._gov._medidor, forcar=True
+            ):
+                self._monitor_rx.sincronizar(self.cli)
+                self._gov._medidor.reset()
+                if rx_link_ok():
+                    logger.info("Reset UDP evitado — sessão OLED renovada")
+                    return True
         if nunca_desconectar_udp() and not reset_cozmo01:
             despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
             self._garantir_rosto_base()

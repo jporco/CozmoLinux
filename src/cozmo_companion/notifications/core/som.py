@@ -40,8 +40,6 @@ def pacotes_beep_notif() -> list[protocol_encoder.OutputAudio]:
         try:
             _gerar_beep_wav(_BEEP_WAV)
         except (OSError, subprocess.CalledProcessError):
-            pass
-        if not _BEEP_WAV.is_file():
             from cozmo_companion.core.som_notif import pacotes_beep_notif as sintetico
 
             return sintetico()
@@ -112,6 +110,7 @@ def tocar_beep_notif(
         modo_tts_restaurar,
         ping_oob,
         sono_oled_texto_ativo,
+        base_oled_loop_segurado,
     )
 
     pkts = pacotes_beep_notif()
@@ -133,7 +132,7 @@ def tocar_beep_notif(
         definir_oled_preso_na_base(True)
         if modo_sono_oled_ativo():
             manter_sono_ppclip(cli)
-        else:
+        elif not base_oled_loop_segurado():
             ligar_oled_base(cli, forcar=False, preso_na_base=True)
         face_was, anim_was = True, True
     else:

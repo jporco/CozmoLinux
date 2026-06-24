@@ -227,7 +227,7 @@ class Tela:
             self.cli.anim_controller.enable_procedural_face(False)
             self._proc_pausado = base_oled_modo_proc()
         self._ultimo_enviado = texto
-        self._enviar_pkt(self._pkt, direct=False)
+        self._enviar_pkt(self._pkt, direct=(forcado or prioridade == "notif"))
 
     def mostrar_scroll(
         self,
@@ -264,7 +264,7 @@ class Tela:
             self.cli.anim_controller.enable_procedural_face(False)
             self._proc_pausado = base_oled_modo_proc()
         self._ultimo_enviado = chave
-        self._enviar_pkt(self._pkt, direct=False)
+        self._enviar_pkt(self._pkt, direct=(forcado or prioridade == "notif"))
 
     def renovar(self, segundos: float = 30.0) -> None:
         """Estende o texto atual sem piscar (sono zZz)."""

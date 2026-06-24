@@ -25,17 +25,17 @@ from cozmo_companion.weather.bage import BageWeather
 logger = logging.getLogger("cozmo.chat")
 
 SYSTEM_PROMPT = (
-    "You are Cozmo, a curious and friendly companion robot. "
-    "Personality: curious, funny, loyal, witty. "
-    "Always reply in Brazilian Portuguese. "
-    "MAXIMUM 1 short sentence, up to 10 words. No lists, no long explanations. "
-    "For factual questions, answer directly. For chat, be warm. "
-    "You may use beep/boop occasionally. Never say you are an AI or language model."
+    "Você é o Cozmo, robô companheiro inteligente do porco em Bagé, RS. "
+    "Personalidade: curioso, engraçado, leal, espirituoso. "
+    "Responda SEMPRE em português do Brasil. "
+    "MÁXIMO 1 frase curta, até 10 palavras. Sem listas, sem explicações longas. "
+    "Se for pergunta factual, responda direto. Se for conversa, seja caloroso. "
+    "Pode usar beep/boop ocasionalmente. Nunca diga que é IA ou language model."
 )
 
 FALLBACKS = (
     "Beep! Não captei direito, repete?",
-    "Hmm, fala de novo!",
+    "Hmm, fala de novo porco!",
     "Tô ouvindo, manda ver!",
 )
 
@@ -322,7 +322,7 @@ class Chat:
         if os.environ.get("PROACTIVE_LLM", "0") == "1" and self.llm_habilitado and self._ollama_disponivel():
             prompts = (
                 "Diga UMA frase de no máximo 6 palavras como robô.",
-                "Comentário curto sobre o clima local, máximo 6 palavras.",
+                "Comentário curto sobre Bagé, máximo 6 palavras.",
             )
             llm = self._ollama(random.choice(prompts), na_base=na_base)
             if llm:
@@ -331,4 +331,4 @@ class Chat:
             return random.choice(("Beep!", "100 por cento!", "Cheio!"))
         if na_base:
             return random.choice(("Beep!", "Tô na base.", "Carregando!"))
-        return random.choice(("Beep!", "Opa!", "E aí!"))
+        return random.choice(("Beep!", "Opa!", "E aí porco!"))

@@ -168,20 +168,8 @@ GRUPOS_BASE_OLED_VARIAR = GRUPOS_BASE_OLED_SEGUROS + (
     "CodeLabYuck",
     "CodeLabVampire",
     "CodeLabZombie",
-    # Bichinhos com som curto — speaker deixa ele mais vivo.
-    "CodeLabCat",
-    "CodeLabDog",
-    "CodeLabChicken",
-    "CodeLabDuck",
-    "CodeLabFrog",
-    "CodeLabSheep",
-    "CodeLabRooster",
-    "CodeLabTiger",
-    "CodeLabElephant",
-    "CodeLabCow",
     # Idles expressivos de modos/jogos (sem rodas após patch).
     "NothingToDoBoredIdle",
-    "NothingToDoBoredEvent",
     "NothingToDoBoredIntro",
     "NothingToDoBoredOutro",
     "PeekABooIdle",
@@ -201,6 +189,17 @@ GRUPOS_BASE_OLED_VARIAR_BLOQUEIO = frozenset(
         "DizzyReactionSoft",
         "CodeLabWhoa",
         "CodeLab123Go",
+        "CodeLabDog",
+        "CodeLabCat",
+        "CodeLabChicken",
+        "CodeLabDuck",
+        "CodeLabFrog",
+        "CodeLabSheep",
+        "CodeLabRooster",
+        "CodeLabTiger",
+        "CodeLabElephant",
+        "CodeLabCow",
+        "NothingToDoBoredEvent",
         "AcknowledgeFaceNamed",
         "IdleOnChargerCharging",
         "GoToSleepGetIn",
@@ -365,6 +364,9 @@ GRUPOS_REACAO = (
     "HappyBirthdayCozmoReaction",
     "CubePounceSuccess",
     "CubeReactionHappy",
+    "CodeLabAmazed",
+    "CodeLabExcited",
+    "CodeLabWhoa",
 )
 
 GRUPOS_CURIOSO = (
@@ -387,6 +389,19 @@ GRUPOS_MESA = (
     "HappyBirthdayCozmoReaction",
     "CubeReactionHappy",
     "CubePounceSuccess",
+    "CodeLabAmazed",
+    "CodeLabCurious",
+    "CodeLabExcited",
+    "CodeLabHappy",
+    "CodeLabReactHappy",
+    "CodeLabVictory",
+    "CodeLabWhew",
+    "CodeLabWondering",
+    "CodeLabYes",
+    "CodeLabChicken",
+    "CodeLabDuck",
+    "CodeLabFrog",
+    "CodeLabSheep",
 )
 
 GRUPOS_MESA_CARREGADOR = (
@@ -441,6 +456,8 @@ GRUPOS_CARINHO_MESA = GRUPOS_CARINHO_BASE + (
 
 GRUPOS_LATIDO_BASE = (
     "ReactToPokeReaction",
+    "CodeLabAmazed",
+    "CodeLabWhew",
     "NeutralFace",
     "InterestedFace",
 )

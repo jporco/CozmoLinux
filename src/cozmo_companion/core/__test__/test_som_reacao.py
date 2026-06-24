@@ -49,8 +49,28 @@ class TestSomReacao(unittest.TestCase):
             "cozmo_companion.core.som_reacao.tocar_som_reacao",
             return_value=True,
         ) as tocar:
-            c._tratar_texto_ouvido("au au")
+            c._tratar_texto_ouvido("ao")
         tocar.assert_called_once()
+
+    def test_volume_reacao_recebe_boost(self) -> None:
+        cli = MagicMock()
+        with (
+            patch.dict(
+                "os.environ",
+                {"SOM_REACAO_VOLUME_BOOST": "4500", "SOM_REACAO_PACOTES": "2"},
+            ),
+            patch("cozmo_companion.core.charger.em_base", return_value=False),
+            patch("cozmo_companion.core.som_reacao.rx_frames", return_value=10),
+            patch("cozmo_companion.core.som_reacao.pulso_ping"),
+            patch("cozmo_companion.core.som_reacao._enviar_sinal_udp"),
+            patch("cozmo_companion.core.som_reacao._respiro_udp"),
+            patch("cozmo_companion.core.som_reacao.estabilizar_pos_audio"),
+            patch("cozmo_companion.core.motor_cozmo.modo_tts_preparar", return_value=(False, False)),
+            patch("cozmo_companion.core.motor_cozmo.modo_tts_restaurar"),
+            patch("cozmo_companion.core.motor_cozmo.ping_oob"),
+        ):
+            self.assertTrue(som_reacao.tocar_som_reacao(cli, tipo="latido", volume=60000))
+        cli.set_volume.assert_called_once_with(64500)
 
 
 if __name__ == "__main__":

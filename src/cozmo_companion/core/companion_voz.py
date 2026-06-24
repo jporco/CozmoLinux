@@ -61,18 +61,27 @@ REACOES_PERGUNTA = (
 REACOES_BARULHO = (
     "ReactToPokeReaction",
     "CodeLabAmazed",
-    "CodeLabSurprise",
-    "CodeLabWhoa",
+    "CodeLabExcited",
     "CodeLabWhew",
     "Hiccup",
     "InterestedFace",
 )
 REACOES_LATIDO = (
-    "CodeLabDog",
-    "CodeLabCat",
-    "CodeLabChicken",
     "ReactToPokeReaction",
+    "CodeLabAmazed",
+    "CodeLabWhew",
+    "CodeLabCurious",
     "InterestedFace",
+)
+REACOES_BARULHO_LIVRE = REACOES_BARULHO + (
+    "Surprise",
+    "ReactToPokeStartled",
+    "HappyBirthdayCozmoReaction",
+)
+REACOES_LATIDO_LIVRE = REACOES_LATIDO + (
+    "CodeLabChicken",
+    "CodeLabDuck",
+    "CubePounceSuccess",
 )
 class CompanionVoz:
     """Mixin — métodos de voz; espera atributos do Companion principal."""
@@ -560,26 +569,32 @@ class CompanionVoz:
 
     def _reagir_barulho(self, nivel: float) -> None:
         agora = time.monotonic()
-        cooldown = float(os.environ.get("BARULHO_COOLDOWN_S", "10"))
+        cooldown = float(os.environ.get("BARULHO_COOLDOWN_S", "6"))
         if agora - self._ultimo_barulho < cooldown or not self._som_reacao_permitido():
             return
         self._ultimo_barulho = agora
         logger.info("Barulho alto detectado (rms=%.0f) — reacao sonora", nivel)
         if hasattr(self, "_detector_escuro"):
             self._detector_escuro.marcar_despertar()
-        self._vida.registrar_interacao(20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base)
-        self._fila.enviar_anim(REACOES_BARULHO, prioridade=True)
-        self._tocar_som_reacao(random.choice(("susto", "curioso")))
+        self._vida.registrar_interacao(
+            20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base
+        )
+        grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
+        self._fila.enviar_anim(grupos, prioridade=True)
+        self._tocar_som_reacao(random.choice(("susto", "curioso", "feliz")))
 
     def _reagir_latido(self, texto: str = "") -> None:
         agora = time.monotonic()
-        cooldown = float(os.environ.get("LATIDO_COOLDOWN_S", "8"))
+        cooldown = float(os.environ.get("LATIDO_COOLDOWN_S", "4"))
         if agora - self._ultimo_latido < cooldown or not self._som_reacao_permitido():
             return
         self._ultimo_latido = agora
         logger.info("Latido detectado — respondendo: %s", texto[:24])
-        self._vida.registrar_interacao(18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base)
-        self._fila.enviar_anim(REACOES_LATIDO, prioridade=True)
+        self._vida.registrar_interacao(
+            18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base
+        )
+        grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
+        self._fila.enviar_anim(grupos, prioridade=True)
         self._tocar_som_reacao("latido")
 
     def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:

@@ -22,17 +22,17 @@ logger = logging.getLogger("cozmo.som")
 
 
 _PADROES: dict[str, tuple[tuple[float, int], ...]] = {
-    "susto": ((1320, 18000), (860, 15000), (1180, 17000), (720, 13000)),
-    "curioso": ((740, 12000), (980, 14500), (1240, 15000)),
-    "latido": ((520, 18000), (0, 0), (620, 18000), (0, 0), (520, 16000)),
-    "feliz": ((880, 12000), (1120, 14500), (1480, 13000), (1120, 11000)),
+    "susto": ((1320, 27000), (860, 23000), (1180, 26000), (720, 21000), (980, 21000)),
+    "curioso": ((740, 22000), (980, 25000), (1240, 24000), (860, 21000)),
+    "latido": ((520, 30000), (0, 0), (650, 30000), (0, 0), (520, 27000), (720, 24000)),
+    "feliz": ((880, 22000), (1120, 25000), (1480, 24000), (1120, 22000), (920, 21000)),
 }
 
 
 def pacotes_som_reacao(tipo: str = "susto") -> list[protocol_encoder.OutputAudio]:
     """Gera pacotes u-law pequenos, sem depender de espeak/paplay."""
     padrao = _PADROES.get(tipo, _PADROES["curioso"])
-    max_pkts = max(1, int(os.environ.get("SOM_REACAO_PACOTES", "5")))
+    max_pkts = max(1, int(os.environ.get("SOM_REACAO_PACOTES", "6")))
     phase = 0.0
     pkts: list[protocol_encoder.OutputAudio] = []
     for freq, amp in padrao[:max_pkts]:
@@ -68,7 +68,9 @@ def tocar_som_reacao(
         return False
 
     na_base = em_base(cli)
-    vol = max(12000, min(65535, volume or int(os.environ.get("COZMO_VOLUME", "62000"))))
+    base_vol = volume if volume is not None else int(os.environ.get("COZMO_VOLUME", "62000"))
+    boost = int(os.environ.get("SOM_REACAO_VOLUME_BOOST", "3500"))
+    vol = max(30000, min(65535, base_vol + boost))
     try:
         cli.set_volume(vol)
     except Exception as exc:

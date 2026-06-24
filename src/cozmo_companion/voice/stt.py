@@ -28,8 +28,8 @@ from cozmo_companion.voice.wake import contem_wake, parcial_wake_pronto
 
 logger = logging.getLogger("cozmo.stt")
 
-LIMIAR_RMS = int(os.environ.get("STT_RMS", "6"))
-LOUD_RMS = int(os.environ.get("LOUD_RMS", "3200"))
+LIMIAR_RMS = int(os.environ.get("STT_RMS", "4"))
+LOUD_RMS = int(os.environ.get("LOUD_RMS", "5200"))
 EventoSom = Callable[[str, str | float], None]
 
 
@@ -205,11 +205,7 @@ class Ouvinte:
                     self._emitir("latido", partial)
                 elif parcial_wake_pronto(partial):
                     self._entregar_texto(partial, parcial=True)
-            elif (
-                nivel >= self._loud_rms
-                and agora - self._ultimo_barulho > 12.0
-                and not partial
-            ):
+            elif nivel >= self._loud_rms and agora - self._ultimo_barulho > 8.0:
                 self._ultimo_barulho = agora
                 self._emitir("barulho", nivel)
 

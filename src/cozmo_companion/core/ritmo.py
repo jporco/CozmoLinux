@@ -20,9 +20,10 @@ def parece_latido(texto: str) -> bool:
     if any(x in t for x in ("au au", "uau", "latido", "cachorro", "wow wow", "ham ham")):
         return True
     palavras = t.split()
-    if palavras and all(p in ("au", "uau", "wow", "ham", "rrau", "raw", "gau") for p in palavras):
+    silabas = ("au", "ao", "uau", "wow", "ham", "rrau", "raw", "gau", "hau")
+    if palavras and all(p in silabas for p in palavras):
         return len(palavras) <= 3
-    return t in ("au", "uau", "wow", "ham", "rrau")
+    return t in silabas
 
 
 class RitmoNatural:

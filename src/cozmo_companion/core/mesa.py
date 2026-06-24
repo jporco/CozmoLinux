@@ -38,6 +38,12 @@ MESA_BUMP_MIN_WHEEL = int(os.environ.get("MESA_BUMP_MIN_WHEEL", "10"))
 MESA_EMERG_COOLDOWN = float(os.environ.get("MESA_EMERG_COOLDOWN", "3.0"))
 
 
+def _faixa(nome_min: str, nome_max: str, padrao_min: float, padrao_max: float) -> tuple[float, float]:
+    lo = float(os.environ.get(nome_min, str(padrao_min)))
+    hi = float(os.environ.get(nome_max, str(padrao_max)))
+    return lo, max(lo + 0.1, hi)
+
+
 def cliff_detectado(cli: pycozmo.Client) -> bool:
     return bool(cli.robot_status & robot.RobotStatusFlag.CLIFF_DETECTED)
 
@@ -191,7 +197,9 @@ class ExploradorMesa:
         self._segura = segura
         self._estado = "off"
         self._ate = 0.0
-        self._proxima = time.monotonic() + random.uniform(10, 28)
+        self._proxima = time.monotonic() + random.uniform(
+            *_faixa("MESA_START_MIN_S", "MESA_START_MAX_S", 3.0, 8.0)
+        )
         self._accel_prev = (0.0, 0.0, 0.0)
         self._duracao_andar = 0.0
         self._ultima_emergencia = 0.0
@@ -217,7 +225,9 @@ class ExploradorMesa:
     def parar_tudo(self, cli: pycozmo.Client) -> None:
         self._parar(cli)
         self._estado = "off"
-        self._proxima = time.monotonic() + random.uniform(10, 28)
+        self._proxima = time.monotonic() + random.uniform(
+            *_faixa("MESA_START_MIN_S", "MESA_START_MAX_S", 3.0, 8.0)
+        )
 
     def _parar(self, cli: pycozmo.Client) -> None:
         cli.stop_all_motors()
@@ -264,16 +274,22 @@ class ExploradorMesa:
         if so_cabeca:
             acao = random.choice(("pausa", "olhar", "olhar", "pausa", "olhar"))
         else:
-            acao = random.choice(
-                ("pausa", "olhar", "olhar", "pausa", "andar", "pausa", "girar")
-            )
+            acao = random.choices(
+                ("pausa", "olhar", "andar", "girar"),
+                weights=(1.2, 2.2, 2.6, 1.8),
+                k=1,
+            )[0]
         self._accel_prev = (cli.accel.x, cli.accel.y, cli.accel.z)
         if acao == "pausa":
             self._estado = "pausa"
-            self._ate = time.monotonic() + random.uniform(8, 22)
+            self._ate = time.monotonic() + random.uniform(
+                *_faixa("MESA_PAUSA_MIN_S", "MESA_PAUSA_MAX_S", 4.0, 12.0)
+            )
         elif acao == "olhar":
             self._estado = "olhar"
-            self._ate = time.monotonic() + random.uniform(8, 18)
+            self._ate = time.monotonic() + random.uniform(
+                *_faixa("MESA_OLHAR_MIN_S", "MESA_OLHAR_MAX_S", 4.0, 10.0)
+            )
             ctx = (
                 ContextoAnim.CARREGADOR
                 if self._segura.rodas_travadas(cli)
@@ -293,12 +309,16 @@ class ExploradorMesa:
                 cli.play_anim_group(nome)
         elif acao == "girar":
             self._estado = "girar"
-            self._ate = time.monotonic() + random.uniform(0.35, 0.65)
+            self._ate = time.monotonic() + random.uniform(
+                *_faixa("MESA_GIRO_MIN_S", "MESA_GIRO_MAX_S", 0.25, 0.55)
+            )
             sentido = random.choice((-1, 1))
             self._drive(cli, -MESA_VEL * sentido, MESA_VEL * sentido)
         else:
             self._estado = "andar"
-            self._duracao_andar = random.uniform(0.6, 1.6)
+            self._duracao_andar = random.uniform(
+                *_faixa("MESA_ANDAR_MIN_S", "MESA_ANDAR_MAX_S", 0.45, 1.0)
+            )
             self._ate = time.monotonic() + self._duracao_andar
             self._drive(cli, MESA_VEL, MESA_VEL)
 
@@ -354,7 +374,9 @@ class ExploradorMesa:
             if agora >= self._ate:
                 self._parar(cli)
                 self._estado = "girar"
-                self._ate = agora + random.uniform(0.4, 0.9)
+                self._ate = agora + random.uniform(
+                    *_faixa("MESA_GIRO_RECUO_MIN_S", "MESA_GIRO_RECUO_MAX_S", 0.35, 0.75)
+                )
                 g = random.choice((-1, 1))
                 self._drive(cli, MESA_VEL * g, -MESA_VEL * g)
             return
@@ -363,17 +385,23 @@ class ExploradorMesa:
             if agora >= self._ate:
                 self._parar(cli)
                 self._estado = "pausa"
-                self._ate = agora + random.uniform(15, 45)
+                self._ate = agora + random.uniform(
+                    *_faixa("MESA_PAUSA_MIN_S", "MESA_PAUSA_MAX_S", 4.0, 12.0)
+                )
             return
 
         if self._estado == "olhar" and agora >= self._ate:
             self._estado = "pausa"
-            self._ate = agora + random.uniform(10, 30)
+            self._ate = agora + random.uniform(
+                *_faixa("MESA_PAUSA_MIN_S", "MESA_PAUSA_MAX_S", 4.0, 12.0)
+            )
             return
 
         if self._estado == "pausa" and agora >= self._ate:
             self._estado = "off"
-            self._proxima = agora + random.uniform(35, 120)
+            self._proxima = agora + random.uniform(
+                *_faixa("MESA_PROX_MIN_S", "MESA_PROX_MAX_S", 6.0, 18.0)
+            )
 
         if self._estado != "off" or agora < self._proxima:
             return

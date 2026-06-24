@@ -61,6 +61,7 @@ from cozmo_companion.core.head_touch import HeadPetDetector
 from cozmo_companion.core.mesa import ExploradorMesa, MesaSegura
 from cozmo_companion.core.motors import MotorWatchdog
 from cozmo_companion.core.perf import PERFIS, ModoPerf, MonitorJogo
+from cozmo_companion.core.pet_livre import PetLivre
 from cozmo_companion.core.sessao_guard import GuardSessao
 from cozmo_companion.core.state import HardwareSnapshot, SafetyState, decide_state
 from cozmo_companion.core.vida import CicloVida, Fase
@@ -113,6 +114,7 @@ class Companion(CompanionVoz):
         self._espirito = Espirito()
         self._mesa = MesaSegura(cli)
         self._explorador = ExploradorMesa(self._mesa)
+        self._pet_livre = PetLivre()
         self._face = FaceWatch(cli)
         from cozmo_companion.core.ambiente_escuro import (
             aplicar_acordado_por_luz,
@@ -248,6 +250,7 @@ class Companion(CompanionVoz):
         """Eventos leves da câmera; decisão passa pelo governador/fila."""
         if evento.kind == PerceptionEventKind.LIGHT_LEVEL:
             return
+        self._pet_livre.registrar_evento(evento)
         if evento.kind == PerceptionEventKind.FACE_LOST:
             return
         if self._vida.dormindo or self._fila.ocupada or self._falando or self._llm_ocupado:
@@ -438,6 +441,17 @@ class Companion(CompanionVoz):
         if self._falando or self._pos_tts_ativo() or not self._fila.livre:
             return True
         if not self._na_base_efetivo():
+            ac = self.cli.anim_controller
+            if (
+                ac.playing_animation
+                or ac.playing_audio
+                or not ac.queue.is_empty()
+                or self._explorador.explorando
+                or self._pet_livre.movimento_interno
+                or self._face.buscando
+                or self._face.rastreando
+            ):
+                return True
             return False
         from cozmo_companion.core.motor_cozmo import _oled_anim_vivo, ppclip_base_ativo
 
@@ -546,6 +560,13 @@ class Companion(CompanionVoz):
                 from cozmo_companion.core.motor_cozmo import modo_mesa_vivo
 
                 modo_mesa_vivo(self.cli)
+                self._pet_livre.entrar_modo_livre()
+                self._face.ligar(na_base=False, forcar=True)
+                self._face.iniciar_busca(
+                    float(os.environ.get("PET_LIVRE_CAMERA_START_S", "10")),
+                    na_base=False,
+                )
+                self._explorador.antecipar(float(os.environ.get("PET_LIVRE_START_S", "1.2")))
             self._fila.enviar_oled(label, segundos=oled_s, prioridade=True)
             self._marcar_udp_quieto(quiet_udp, pausar_fila=False)
             self._fila.drenar(self.cli, timeout_s=float(os.environ.get("BOTAO_FILA_DRAIN_S", "10")))
@@ -1426,6 +1447,62 @@ class Companion(CompanionVoz):
             pode_camera=pode_cam,
         )
 
+    def _loop_pet_autonomo(self) -> None:
+        safety = self._safety_state()
+        if self._vida.dormindo or self._falando or self._llm_ocupado:
+            return
+        livre = safety.movement_allowed
+        free_ready = safety.free_armed and not safety.effective_base
+        no_carregador_livre = safety.free_armed and safety.effective_base
+
+        ocupado = self._fila.ocupada or self._periodo_quieto_ativo()
+        if livre and (self._explorador.explorando or not ocupado):
+            self._explorador.tick(self.cli)
+        elif not safety.free_armed:
+            return
+
+        if self._periodo_quieto_ativo() or not self._gov.ultimo_rx_ok:
+            return
+        if self._fila.ocupada or not safety.animation_allowed:
+            return
+
+        if livre and self._gov.pode("camera") and not self._face.ativo:
+            self._face.ligar(na_base=False, forcar=True)
+
+        plano = self._pet_livre.escolher(
+            livre=livre or free_ready,
+            no_carregador=no_carregador_livre,
+            face_ativa=self._face.buscando or self._face.rastreando,
+        )
+        if plano is None:
+            return
+
+        logger.info("Pet %s — modo=%s", plano.acao, safety.mode.value)
+        if plano.acao == "explorar":
+            if livre:
+                self._explorador.antecipar(0.1)
+            return
+        if plano.acao == "camera":
+            if safety.camera_allowed and self._gov.pode("camera"):
+                self._face.iniciar_busca(plano.camera_s or 8.0, na_base=safety.effective_base)
+            if plano.anims:
+                self._fila.enviar_anim(plano.anims, prioridade=False)
+            return
+        if plano.acao == "gesto":
+            if livre:
+                self._pet_livre.gesto_curto(self.cli)
+            if plano.anims:
+                self._fila.enviar_anim(plano.anims, prioridade=False)
+            return
+        if plano.acao == "scan":
+            if livre:
+                self._pet_livre.scan_curto(self.cli)
+            if safety.camera_allowed and self._gov.pode("camera"):
+                self._face.iniciar_busca(6.0, na_base=safety.effective_base)
+            return
+        if plano.anims:
+            self._fila.enviar_anim(plano.anims, prioridade=False)
+
     def _loop_volume_arquivo(self) -> None:
         if not self._volume_file.is_file():
             return
@@ -1656,6 +1733,7 @@ class Companion(CompanionVoz):
                 self._processar_acao_llm()
                 self._executar_fala()
                 self._pulse_vivo()
+                self._loop_pet_autonomo()
                 from cozmo_companion.core.motor_cozmo import base_oled_modo_direto
 
                 if (

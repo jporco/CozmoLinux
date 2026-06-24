@@ -469,11 +469,15 @@ def expirar_hold_oled_base(cli: "pycozmo.Client | None" = None) -> bool:
     if _base_oled_loop_hold_desde <= 0 and not base_oled_loop_segurado():
         return False
     max_s = _hold_max_s()
+    stack_max = _hold_stack_max_s()
     expirado = agora >= _base_oled_loop_hold_ate
-    estourou = _base_oled_loop_hold_desde > 0 and agora >= _base_oled_loop_hold_desde + max_s
+    estourou = (
+        _base_oled_loop_hold_desde > 0
+        and agora >= _base_oled_loop_hold_desde + stack_max
+    )
     if not expirado and not estourou:
         return False
-    motivo = f">{max_s:.0f}s" if estourou else "timeout"
+    motivo = f">{stack_max:.0f}s" if estourou else "timeout"
     if base_oled_loop_segurado():
         liberar_base_oled_loop_hold(motivo=motivo)
     else:
@@ -705,7 +709,7 @@ def religar_base_oled_pos_notif(cli: "pycozmo.Client") -> None:
 
 
 def _base_clip_sem_rodas_ativo(cli: "pycozmo.Client") -> bool:
-    """Na base com patch de anim — não usar stop_all_motors (só editar clip)."""
+    """Na base com patch de anim — não usar stop_all_motors (porco: só editar clip)."""
     if os.environ.get("COZMO_BASE_STOP_RODAS_CMD", "0") == "1":
         return False
     if not getattr(cli, "_cozmo_sem_rodas_patch", False):
@@ -1943,6 +1947,12 @@ def _exibir_clip_base(
                 return False
             ping_sessao_base(cli)
             pulso_sync_base(cli, forcado=True)
+            if not _oled_tx_permitido(cli):
+                logger.warning(
+                    "Base OLED: clip %s adiado — RX parado após ping",
+                    grupo,
+                )
+                return False
         else:
             try:
                 ping_oob(cli, vezes=max(2, int(os.environ.get("COZMO_PING_PRE_CLIP", "2"))))
@@ -2234,6 +2244,12 @@ def renovar_sessao_base_oled(
     from cozmo_companion.core.conexao import cozmo_alcanavel, diagnostico
 
     if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
+        if not cozmo_alcanavel():
+            return False
+        if _pulso_recuperar_rx(cli):
+            if modo_sono_oled_ativo() and not _sono_oled_texto_ativo:
+                manter_sono_ppclip(cli)
+            return True
         return False
     if not cozmo_alcanavel():
         return False
@@ -3654,6 +3670,18 @@ def detectar_cozmo01_suspeito(cli: "pycozmo.Client") -> bool:
     return time.monotonic() - _ultimo_exibir_clip_em >= timeout
 
 
+def _pulso_recuperar_rx(cli: "pycozmo.Client", *, tentativas: int = 5) -> bool:
+    """Ping + sync — True se RX voltou (sem enqueue de clip)."""
+    gap = float(os.environ.get("COZMO01_PING_GAP_S", "0.12"))
+    for _ in range(max(1, tentativas)):
+        ping_sessao_base(cli)
+        pulso_sync_base(cli, forcado=True)
+        time.sleep(gap)
+        if rx_link_ok():
+            return True
+    return rx_link_ok()
+
+
 def _sequencia_recuperar_cozmo01(cli: "pycozmo.Client") -> bool:
     """Pausa flood → drenagem → enable_animations → clip neutro → ppclip loop."""
     from cozmo_companion.core.conexao import cozmo_alcanavel
@@ -3671,9 +3699,9 @@ def _sequencia_recuperar_cozmo01(cli: "pycozmo.Client") -> bool:
     _drenar_fila_anim(cli)
     _handshake_oled_base(cli)
     pulso_sync_base(cli, forcado=True)
-    for _ in range(3):
-        ping_sessao_base(cli)
-        time.sleep(0.1)
+    if not _pulso_recuperar_rx(cli):
+        logger.warning("Recuperação OLED — RX parado após ping (sem clip)")
+        return False
     ac = cli.anim_controller
     ac.enable_procedural_face(False)
     ac.enable_animations(True)
@@ -3684,7 +3712,7 @@ def _sequencia_recuperar_cozmo01(cli: "pycozmo.Client") -> bool:
         with _charger_oled_lock:
             sono_clip = _charger_oled_nome or "GoToSleepSleeping"
         ok_clip = _exibir_clip_base(
-            cli, sono_clip, forcar=True, recuperacao=not rx_link_ok()
+            cli, sono_clip, forcar=True, recuperacao=False
         )
         ok_loop = _garantir_base_oled_anim_loop(cli) if rx_link_ok() else False
         logger.info(

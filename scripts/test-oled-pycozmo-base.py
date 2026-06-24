@@ -2,7 +2,7 @@
 """Teste OLED na base — API oficial PyCozmo (overview + examples/anim.py).
 
 Uso (Cozmo ligado e na base):
-  cd /path/to/CozmoLinux
+  cd /mnt/G/PROJETOS/cozmo-companion
   .venv/bin/python scripts/test-oled-pycozmo-base.py --modo clip
   .venv/bin/python scripts/test-oled-pycozmo-base.py --modo proc
   .venv/bin/python scripts/test-oled-pycozmo-base.py --modo keeper

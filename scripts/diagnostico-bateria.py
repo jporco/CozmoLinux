@@ -3,10 +3,7 @@
 import sys
 import time
 
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, "/mnt/G/PROJETOS/cozmo-companion/src")
 
 import pycozmo
 from pycozmo import robot

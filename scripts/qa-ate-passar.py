@@ -18,7 +18,7 @@ REL = ROOT / "data" / "qa-relatorio.json"
 
 CASOS = (
     ("hora", "cozmo que horas são", ("Util tela", "Sinal: Hora"), 36),
-    ("temp", "cozmo qual a temperatura", ("Util tela", "Local"), 30),
+    ("temp", "cozmo qual a temperatura", ("Util tela", "Bagé"), 30),
     ("wake", "oi cozmo", ("Wake", "Sinal:"), 24),
 )
 

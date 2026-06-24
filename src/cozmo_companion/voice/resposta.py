@@ -66,11 +66,11 @@ def resposta_rapida(texto: str) -> str | None:
     if parece_saudacao_curta(t):
         return random.choice(_RESPOSTAS_SAUDACAO)
     if t in ("obrigado", "valeu", "brigado"):
-        return random.choice(("Beep! De nada!", "Por nada!", "Sempre!"))
+        return random.choice(("Beep! De nada!", "Por nada porco!", "Sempre!"))
     if t in ("tchau", "até", "ate", "flw", "falou"):
-        return random.choice(("Tchau!", "Beep tchau!", "Até!"))
+        return random.choice(("Tchau porco!", "Beep tchau!", "Até!"))
     if any(x in t for x in ("estou triste", "tô triste", "to triste", "estou mal", "quase morri")):
-        return random.choice(("Beep...", "Tô aqui.", "Força!"))
+        return random.choice(("Beep...", "Tô aqui.", "Força porco!"))
     if any(x in t for x in ("estou feliz", "obrigado", "valeu")):
         return random.choice(("Beep!", "Massa!", "De nada!"))
     return None

@@ -16,7 +16,7 @@ class TestBageWeather(unittest.TestCase):
     def test_frase_sem_dados(self, _buscar: MagicMock) -> None:
         w = BageWeather()
         w._cache = None
-        self.assertIn("Local", w.frase())
+        self.assertIn("Bagé", w.frase())
 
 
 if __name__ == "__main__":

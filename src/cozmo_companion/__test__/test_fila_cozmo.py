@@ -144,6 +144,7 @@ class TestFilaCozmo(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
+                "NOTIF_OLED_PRIMEIRO": "0",
                 "NOTIF_SOM_PRIMEIRO": "1",
                 "NOTIF_ANIM": "0",
                 "COZMO_NOTIF_ANIM_FIRST": "0",
@@ -154,7 +155,7 @@ class TestFilaCozmo(unittest.TestCase):
                 "Discord: oi",
                 0.2,
                 grupos_anim=(),
-                som_grupo="Hiccup",
+                som_beep=True,
                 prioridade=True,
                 pausar_loop_ja=True,
             )
@@ -178,6 +179,7 @@ class TestFilaCozmo(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
+                "NOTIF_OLED_PRIMEIRO": "0",
                 "NOTIF_SOM_PRIMEIRO": "1",
                 "NOTIF_ANIM": "0",
                 "COZMO_NOTIF_ANIM_FIRST": "0",
@@ -202,6 +204,7 @@ class TestFilaCozmo(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
+                "NOTIF_OLED_PRIMEIRO": "0",
                 "NOTIF_SOM_PRIMEIRO": "1",
                 "NOTIF_ANIM": "0",
                 "COZMO_NOTIF_ANIM_FIRST": "0",
@@ -310,6 +313,7 @@ class TestFilaCozmo(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
+                "NOTIF_OLED_PRIMEIRO": "0",
                 "NOTIF_SOM_PRIMEIRO": "1",
                 "NOTIF_ANIM": "0",
                 "COZMO_NOTIF_ANIM_FIRST": "0",
@@ -320,7 +324,7 @@ class TestFilaCozmo(unittest.TestCase):
                 "Discord: oi",
                 0.2,
                 grupos_anim=(),
-                som_grupo="Hiccup",
+                som_beep=True,
                 prioridade=True,
                 pausar_loop_ja=True,
             )

@@ -182,6 +182,26 @@ class TestBaseOledAnimLoop(unittest.TestCase):
         motor._base_oled_loop_hold_ate = 0.0
         motor._base_oled_loop_hold_desde = 0.0
 
+    def test_expirar_hold_nao_estoura_antes_do_stack(self) -> None:
+        cli = MagicMock()
+        cli.anim_controller.playing_audio = False
+        cli.anim_controller.playing_animation = False
+        cli.anim_controller.queue.is_empty.return_value = True
+        agora = time.monotonic()
+        motor._base_oled_loop_hold_desde = agora - 10.0
+        motor._base_oled_loop_hold_ate = agora + 8.0
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_OLED_HOLD_MAX_S": "8",
+                "COZMO_BASE_OLED_HOLD_STACK": "2.5",
+            },
+        ):
+            self.assertFalse(motor.expirar_hold_oled_base(cli))
+            self.assertTrue(motor.base_oled_loop_segurado())
+        motor._base_oled_loop_hold_ate = 0.0
+        motor._base_oled_loop_hold_desde = 0.0
+
     def test_oled_charger_vivo_com_anim_loop(self) -> None:
         cli = MagicMock()
         th = MagicMock(is_alive=lambda: True)

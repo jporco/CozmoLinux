@@ -68,7 +68,7 @@ class FilaCozmo:
     """Orquestra envios UDP leves ao robô em série."""
 
     gov: GovernadorCozmo
-    tocar_grupo: Callable[..., None]
+    tocar_grupo: Callable[..., object]
     mostrar_oled: Callable[..., None]
     executar_sinal: Callable[[str], bool]
     executar_som: Callable[[], bool]
@@ -313,15 +313,17 @@ class FilaCozmo:
         seg_titulo: float = 0.0,
         pausar_loop_ja: bool = False,
     ) -> bool:
-        """Pipeline notif: beep UDP → anim? → OLED → quiet → loop base.
+        """Pipeline notif: OLED app → beep curto → quiet (NOTIF_OLED_PRIMEIRO=1).
 
-        NOTIF_SOM_PRIMEIRO=1: play_audio beep (ItemFila.SOM) → OLED app → quiet.
-        NOTIF_PC_AUDIO=0: sem paplay/espeak/TTS no PC — som só no Cozmo.
+        NOTIF_OLED_PRIMEIRO=1: nome do app na tela antes do beep.
+        NOTIF_SOM_PRIMEIRO=1: beep antes do OLED (legado, mais lento).
         """
         if sinal_tts:
             logger.debug("Notif — sinal_tts ignorado (sem TTS): %s", sinal_tts[:12])
+        oled_primeiro = os.environ.get("NOTIF_OLED_PRIMEIRO", "1") == "1"
         som_primeiro = (
-            os.environ.get("NOTIF_SOM_PRIMEIRO", os.environ.get("NOTIF_SINAL_PRIMEIRO", "1"))
+            not oled_primeiro
+            and os.environ.get("NOTIF_SOM_PRIMEIRO", os.environ.get("NOTIF_SINAL_PRIMEIRO", "0"))
             == "1"
         )
         if not pausar_loop_ja and self.na_base():
@@ -332,7 +334,9 @@ class FilaCozmo:
                 )
 
                 if _base_oled_anim_loop_ativo():
-                    _parar_base_oled_anim_loop(timeout=2.0)
+                    _parar_base_oled_anim_loop(
+                        timeout=float(os.environ.get("NOTIF_LOOP_STOP_S", "0.25"))
+                    )
             except Exception:
                 pass
         anim_first = os.environ.get("COZMO_NOTIF_ANIM_FIRST", "1") == "1"
@@ -350,7 +354,7 @@ class FilaCozmo:
         )
         quiet = max(
             self._quiet_padrao(),
-            float(os.environ.get("NOTIF_QUIET_S", os.environ.get("NOTIF_ANIM_S", "2.2"))),
+            float(os.environ.get("NOTIF_QUIET_S", "1.0")),
         )
         batch: list[ItemFila] = []
         oled_items: list[ItemFila] = []
@@ -379,7 +383,8 @@ class FilaCozmo:
                         notif=True,
                     )
                 )
-        if som_primeiro and (som_beep or som_grupo):
+        som_item: ItemFila | None = None
+        if som_beep:
             modo_som = (os.environ.get("NOTIF_SOM_MODO") or "beep").strip().lower()
             if modo_som in ("sinal", "tts"):
                 logger.debug(
@@ -387,18 +392,20 @@ class FilaCozmo:
                     modo_som,
                 )
             if modo_som not in ("0", "off", "none"):
-                batch.append(
-                    ItemFila(
-                        tipo=TipoItem.SOM,
-                        prioridade=prioridade,
-                        notif=True,
-                    )
+                som_item = ItemFila(
+                    tipo=TipoItem.SOM,
+                    prioridade=prioridade,
+                    notif=True,
                 )
+        if som_primeiro and som_item is not None:
+            batch.append(som_item)
         if anim_first and grupos_anim and (anim_na_base or not self.na_base()):
             batch.append(
                 ItemFila(tipo=TipoItem.ANIM, grupos=grupos_anim, prioridade=prioridade)
             )
         batch.extend(oled_items)
+        if not som_primeiro and som_item is not None:
+            batch.append(som_item)
         batch.append(
             ItemFila(tipo=TipoItem.QUIET, quiet_s=quiet, prioridade=prioridade, notif=True)
         )
@@ -508,7 +515,15 @@ class FilaCozmo:
         self._estado_desde = time.monotonic()
         if item.tipo == TipoItem.ANIM:
             self._desligar_procedural(cli)
-            self.tocar_grupo(item.grupos, prioridade=item.prioridade)
+            ok = self.tocar_grupo(item.grupos, prioridade=item.prioridade)
+            if ok is False:
+                self._estado = EstadoFila.IDLE
+                self._anim_aguardando = False
+                self._anim_deadline = 0.0
+                self._restaurar_rosto_pos_item(cli)
+                self._procedural_desligado = False
+                logger.debug("Fila — anim pulada (robô ocupado)")
+                return
             self._estado = EstadoFila.ANIM
             self._anim_aguardando = True
             self._anim_deadline = time.monotonic() + self._timeout_anim()

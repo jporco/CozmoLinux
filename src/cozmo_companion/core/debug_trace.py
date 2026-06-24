@@ -7,11 +7,9 @@ import os
 import time
 from typing import Any
 
-from cozmo_companion.core.paths import data_dir
-
 _LOG = os.environ.get(
     "COZMO_DEBUG_TRACE_LOG",
-    str(data_dir() / "debug-trace.log"),
+    "/mnt/G/PROJETOS/cozmo-companion/.cursor/debug-trace.log",
 )
 _SESSION = "cozmo"
 

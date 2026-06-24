@@ -16,14 +16,14 @@ from cozmo_companion.notifications.core.listener import Notificacao
 
 class TestNotifDisplay(unittest.TestCase):
     def test_linhas_so_app_padrao(self) -> None:
-        n = Notificacao("Discord", "Nova mensagem", "corpo")
+        n = Notificacao("Discord", "", "Nova mensagem", "corpo")
         with patch.dict(os.environ, {"NOTIF_OLED_DUPLO": "0"}):
             app, tit = linhas_oled_notif(n)
         self.assertEqual(app, "Discord")
         self.assertIsNone(tit)
 
     def test_linhas_nunca_titulo(self) -> None:
-        n = Notificacao("Discord", "Nova mensagem", "corpo")
+        n = Notificacao("Discord", "", "Nova mensagem", "corpo")
         with patch.dict(
             os.environ,
             {"NOTIF_OLED_DUPLO": "1", "NOTIF_TRECHO_TITULO": "1"},
@@ -33,7 +33,7 @@ class TestNotifDisplay(unittest.TestCase):
         self.assertIsNone(tit)
 
     def test_combinado_so_app(self) -> None:
-        n = Notificacao("Steam", "Update disponível", "")
+        n = Notificacao("Steam", "", "Update disponível", "")
         self.assertEqual(texto_oled_combinado(n), "Steam")
 
     def test_segundos_duas_linhas(self) -> None:

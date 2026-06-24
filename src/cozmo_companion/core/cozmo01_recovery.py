@@ -109,13 +109,18 @@ class RecuperadorCozmo01:
 
         drx, dtx, _ = medidor.amostra(cli)
         agora = time.monotonic()
+        reset_fails = max(1, int(os.environ.get("COZMO01_RESET_FAILS", "3")))
+        reset_ticks = max(1, int(os.environ.get("COZMO01_RESET_STALL_TICKS", "2")))
         emergencia = not g.rx_ok and drx <= 0 and dtx >= stall_tx_base()
+        if not g.rx_ok and self._stall_desde <= 0:
+            self._stall_desde = agora
         stall_s = (
             agora - self._stall_desde
             if self._stall_desde > 0
             else 0.0
         )
         max_stall_s = float(os.environ.get("COZMO01_STALL_MAX_S", "10"))
+        emerg_min_s = float(os.environ.get("COZMO01_EMERG_MIN_S", "4"))
 
         if drx <= 0 and dtx >= prevent_dtx_base():
             cortar_flood_udp_base(cli)
@@ -149,8 +154,8 @@ class RecuperadorCozmo01:
             and agora - ultimo_reconnect_udp >= cooldown
         )
 
-        # RX morto: no máximo 1 seq — sucesso só com ACK real (rx_link_ok).
-        if not g.rx_ok and self.cozmo01_falhas == 0 and stall_s < max_stall_s * 0.5:
+        # RX morto: sequência in-place — só reset UDP após N falhas (evita COZMO 01 na tela).
+        if not g.rx_ok and self.cozmo01_falhas < reset_fails:
             if recuperar_cozmo01_auto(cli, monitor, medidor, forcar=True):
                 self.cozmo01_falhas = 0
                 self._stall_desde = 0.0
@@ -161,12 +166,13 @@ class RecuperadorCozmo01:
                 )
                 return ResultadoRecuperacao(in_place=True)
             self.cozmo01_falhas += 1
+            return ResultadoRecuperacao()
 
         deve_reset = pode_reset and (
             stall_s >= max_stall_s
-            or self.cozmo01_falhas >= 1
-            or self.stall_consecutivo >= 2
-            or emergencia
+            or self.cozmo01_falhas >= reset_fails
+            or self.stall_consecutivo >= reset_ticks
+            or (emergencia and stall_s >= emerg_min_s)
         )
 
         if deve_reset:

@@ -90,7 +90,7 @@ else
   sed -i "s|@INSTALL_DIR@|$ROOT|g" "$ROOT/config.env" 2>/dev/null || true
 fi
 
-if [[ ! -f "$ROOT/config.guardian.env ]]; then
+if [[ ! -f "$ROOT/config.guardian.env" ]]; then
   cp "$ROOT/config.guardian.env.example" "$ROOT/config.guardian.env"
 fi
 
@@ -136,6 +136,6 @@ Next steps:
      systemctl --user enable --now cozmo-guardian.service
 
   Volume CLI: cozmo | cozmo + | cozmo -
-  Logs: $ROOT/cozmo-companion.log
+  Logs: $ROOT/cozmo-companheiro.log
 
 EOF

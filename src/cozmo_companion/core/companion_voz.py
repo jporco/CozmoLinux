@@ -29,7 +29,7 @@ from cozmo_companion.voice.acoes_llm import (
     resolver_acao,
     tela_para_acao,
 )
-from cozmo_companion.voice.mic import resolver_dispositivo
+from cozmo_companion.voice.mic import mic_ocupado_externo, resolver_dispositivo
 from cozmo_companion.voice.sinal import (
     audio_na_base,
     comando_util,
@@ -77,16 +77,16 @@ class CompanionVoz:
         self._ultimo_tts_fim = 0.0
         self._ultimo_util_tela = 0.0
         self._ultima_notif = 0.0
+        self._ultima_notif_app = ""
+        self._ultima_notif_titulo = ""
         self._cooldown_voz_base_ate = 0.0
         self._stt_base_wake_ate = 0.0
         self.ouvinte: Ouvinte | None = None
         self._ouvinte_notif: OuvinteNotificacoes | None = None
-        from cozmo_companion.core.paths import data_dir, install_root
-
         self._voz_cmd = Path(
             os.environ.get(
                 "COZMO_VOZ_CMD",
-                str(data_dir() / "voz.cmd"),
+                "/mnt/G/PROJETOS/cozmo-companion/data/voz.cmd",
             )
         )
         self._wake = WakeWord(
@@ -113,6 +113,18 @@ class CompanionVoz:
 
     def _ajustar_stt_base(self) -> None:
         if not self.ouvinte:
+            return
+        if mic_ocupado_externo():
+            if getattr(self.ouvinte, "_thread", None) and self.ouvinte._thread.is_alive():
+                self.ouvinte.stop()
+                logger.info("Microfone liberado para outro serviço (JARVIS)")
+            return
+        if not (getattr(self.ouvinte, "_thread", None) and self.ouvinte._thread.is_alive()):
+            try:
+                self.ouvinte.start()
+                logger.info("Microfone retomado")
+            except Exception as exc:
+                logger.warning("Falha ao retomar STT: %s", exc)
             return
         agora = time.monotonic()
         if self._na_base_efetivo():
@@ -427,7 +439,7 @@ class CompanionVoz:
         else:
             self._fila.enviar_anim(REACOES_WAKE, prioridade=True)
             self._pedir_fala(
-                random.choice(("Opa!", "Oi!", "Beep!", "Tô ouvindo!")),
+                random.choice(("Opa!", "Oi porco!", "Beep!", "Tô ouvindo!")),
                 tela="?",
                 na_base_ok=True,
                 prioridade=True,
@@ -707,23 +719,21 @@ class CompanionVoz:
         threading.Thread(target=_pensar, daemon=True, name="CozmoLLM").start()
 
     def _notif_recebida(self, notif: Notificacao) -> None:
-        self._notif_q.put(notif)
+        try:
+            with self._lock:
+                from cozmo_companion.core.charger import carregando
+
+                aplicar_notificacao(
+                    self,
+                    notif,
+                    carregando=carregando(self.cli),
+                    preso_na_base=self._base.preso_na_base,
+                )
+        except Exception as exc:
+            logger.warning("Notif imediata: %s", exc)
 
     def _processar_notificacoes(self) -> None:
-        ultima: Notificacao | None = None
-        while True:
-            try:
-                ultima = self._notif_q.get_nowait()
-            except queue.Empty:
-                break
-        if ultima is None:
-            return
-        aplicar_notificacao(
-            self,
-            ultima,
-            carregando=carregando(self.cli),
-            preso_na_base=self._base.preso_na_base,
-        )
+        return
 
     def _loop_voz_arquivo(self) -> None:
         if os.environ.get("COZMO_VOZ_INJECT", "0") != "1":
@@ -742,18 +752,17 @@ class CompanionVoz:
     def _iniciar_ouvinte(self) -> None:
         if not self.chat_enabled:
             return
-        from cozmo_companion.core.paths import data_dir
-
         modelo = Path(
             os.environ.get(
                 "VOSK_MODEL",
-                str(data_dir() / "vosk-model-small-pt-0.3"),
+                "/mnt/G/PROJETOS/cozmo-companion/data/vosk-model-small-pt-0.3",
             )
         )
         try:
-            from cozmo_companion.voice.mic import ativar_fonte
+            from cozmo_companion.voice.mic import ativar_fonte, mic_ocupado_externo
 
-            ativar_fonte()
+            if not mic_ocupado_externo():
+                ativar_fonte()
         except Exception:
             pass
         try:

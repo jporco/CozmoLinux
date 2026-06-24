@@ -11,6 +11,9 @@ config.env
 config.guardian.env
 data/*
 !data/.gitkeep
+src/data/
+voz.cmd
+_empty.wav
 
 # Logs
 *.log

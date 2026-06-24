@@ -9,9 +9,14 @@ from dataclasses import dataclass
 
 from cozmo_companion.notifications.core.listener import Notificacao
 
+OLED_APP_DESCONHECIDO = "???"
+
 _LIXO_APP_RE = re.compile(
-    r"(?i)^(notifica(ç|c)[aã]o|notification|mensagem|message|alerta|alert|aviso|warning)"
-    r"(\s+(de|from|do|da|para|to))?\s*"
+    r"(?i)^(notifica(ç|c)[aã]o(ões|oes)?|notifications?)"
+    r"(\s+(de|from|do|da|para|to|of))?\s*"
+)
+_LIXO_SISTEMA_RE = re.compile(
+    r"(?i)^(notifica(ç|c)[aã]o(ões|oes)?\s+)?(do|da|de)\s+sistema$|^sistema$|^system$"
 )
 _PALAVRAS_LIXO_OLED = frozenset(
     {
@@ -20,6 +25,7 @@ _PALAVRAS_LIXO_OLED = frozenset(
         "notificação",
         "notificacao",
         "notification",
+        "notifications",
         "alerta",
         "alert",
         "aviso",
@@ -27,7 +33,18 @@ _PALAVRAS_LIXO_OLED = frozenset(
         "nova",
         "new",
         "novo",
+        "sistema",
+        "system",
+        "do",
+        "da",
+        "de",
+        "from",
+        "of",
     }
+)
+_GENERICO_SUBSTR = (
+    "notifica",
+    "notification",
 )
 
 _ALIASES: dict[str, str] = {
@@ -60,6 +77,8 @@ class ContextoNotif:
     carregando: bool
     ultima_em: float
     agora: float
+    ultima_app: str = ""
+    ultima_titulo: str = ""
     rx_ok: bool = True
 
 
@@ -72,19 +91,27 @@ def _lista_env(nome: str) -> frozenset[str]:
 
 def _limpar_app_dbus(app: str) -> str:
     s = re.sub(r"\s+", " ", (app or "").strip())
-    for _ in range(4):
+    if _LIXO_SISTEMA_RE.match(s):
+        return ""
+    for _ in range(6):
         novo = _LIXO_APP_RE.sub("", s, count=1).strip()
         if novo == s:
             break
         s = novo
+    if _LIXO_SISTEMA_RE.match(s):
+        return ""
     return s
 
 
 def _app_e_generico_oled(nome: str) -> bool:
-    if not nome or nome == "?":
+    if not nome or nome in (OLED_APP_DESCONHECIDO, "?", "??"):
         return True
     chave = nome.strip().lower()
     if chave in _PALAVRAS_LIXO_OLED:
+        return True
+    if any(tok in chave for tok in _GENERICO_SUBSTR):
+        return True
+    if _LIXO_SISTEMA_RE.match(chave):
         return True
     palavras = set(re.findall(r"\w+", chave, flags=re.UNICODE))
     return bool(palavras) and palavras <= _PALAVRAS_LIXO_OLED
@@ -116,14 +143,13 @@ def max_oled_chars() -> int:
 
 
 def nome_app_oled(notif: Notificacao) -> str:
-    """Uma linha OLED — só app_name do dbus, nunca título/corpo."""
-    app = _normalizar_app(notif.app)
-    if _app_e_generico_oled(app):
-        app = "?"
-    app = re.sub(r"\s+", " ", app).strip()
+    """Uma linha OLED — só nome do app; nunca título/corpo."""
+    from cozmo_companion.notifications.core.apps import resolver_nome_app
+
+    app = resolver_nome_app(notif)
     lim = max_oled_chars()
     if len(app) > lim:
-        return app[: lim - 1] + "…"
+        return app[:lim]
     return app
 
 
@@ -133,21 +159,8 @@ def texto_tela(notif: Notificacao) -> str:
 
 
 def texto_trecho(notif: Notificacao) -> str:
-    """Um trecho curto na OLED — título (ou corpo), sem marquee."""
-    lim = max_oled_chars()
-    titulo = re.sub(r"\s+", " ", (notif.titulo or "").strip())
-    corpo = re.sub(r"\s+", " ", (notif.corpo or "").strip())
-    if os.environ.get("NOTIF_TRECHO_TITULO", "1") == "1" and titulo:
-        base = titulo
-    elif corpo:
-        base = corpo
-    elif titulo:
-        base = titulo
-    else:
-        base = _normalizar_app(notif.app) or "?"
-    if len(base) > lim:
-        return base[: lim - 1] + "…"
-    return base
+    """OLED de notificação — só nome do app (sem título/corpo)."""
+    return nome_app_oled(notif)
 
 
 def texto_scroll(notif: Notificacao) -> str:
@@ -199,13 +212,16 @@ def deve_processar(notif: Notificacao, ctx: ContextoNotif) -> bool:
         cooldown = float(
             os.environ.get(
                 "NOTIF_BASE_COOLDOWN_S",
-                os.environ.get("NOTIF_COOLDOWN_S", "12"),
+                os.environ.get("NOTIF_COOLDOWN_S", "0.4"),
             )
         )
     else:
-        cooldown = float(os.environ.get("NOTIF_COOLDOWN_S", "6"))
+        cooldown = float(os.environ.get("NOTIF_COOLDOWN_S", "0.4"))
     if ctx.ultima_em > 0 and ctx.agora - ctx.ultima_em < cooldown:
-        return False
+        app_ant = (ctx.ultima_app or "").strip().lower()
+        tit_ant = (ctx.ultima_titulo or "").strip()
+        if app_raw == app_ant and titulo == tit_ant:
+            return False
 
     permitidos = _lista_env("NOTIF_APPS")
     if permitidos:

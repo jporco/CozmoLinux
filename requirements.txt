@@ -7,3 +7,5 @@ requests==2.34.2
 opencv-python-headless==4.13.0.92
 standard-chunk>=1.0.0; python_version>='3.13'
 pytest>=8.0.0
+dbus-python==1.4.0
+PyGObject==3.56.3

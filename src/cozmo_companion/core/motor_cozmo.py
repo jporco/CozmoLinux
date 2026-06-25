@@ -1325,15 +1325,16 @@ def _iniciar_keeper_clip_oled_base(cli: "pycozmo.Client", grupo: str, *, hz: flo
 
 
 def _intervalo_variar_base_s() -> float:
-    """Janela troca clip — acordado ~18±4s; sono mais longo."""
+    """Janela de troca do clip OLED na base, com piso real contra flood UDP."""
     if modo_sono_oled_ativo():
-        centro = float(os.environ.get("COZMO_SLEEP_CLIP_HOLD_S", "22"))
-        jitter = float(os.environ.get("COZMO_SLEEP_CLIP_JITTER_S", "8"))
-        return max(18.0, centro + random.uniform(-jitter, jitter))
-    centro = float(os.environ.get("COZMO_BASE_VARIAR_S", "22"))
-    jitter = float(os.environ.get("COZMO_BASE_VARIAR_JITTER_S", "6"))
-    intervalo = max(12.0, min(28.0, random.uniform(centro - jitter, centro + jitter)))
-    return min(intervalo, _oled_max_estatico_s())
+        centro = float(os.environ.get("COZMO_SLEEP_CLIP_HOLD_S", "28"))
+        jitter = float(os.environ.get("COZMO_SLEEP_CLIP_JITTER_S", "10"))
+        return max(22.0, centro + random.uniform(-jitter, jitter))
+    centro = float(os.environ.get("COZMO_BASE_VARIAR_S", "32"))
+    jitter = float(os.environ.get("COZMO_BASE_VARIAR_JITTER_S", "8"))
+    intervalo = random.uniform(centro - jitter, centro + jitter)
+    intervalo = max(18.0, min(55.0, intervalo))
+    return max(18.0, min(intervalo, _oled_max_estatico_s()))
 
 
 def _aguardar_fim_clip_loop(
@@ -1406,6 +1407,11 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
                 if _clip_loop_stop.wait(0.25):
                     break
                 continue
+            clip_loop_hold = float(os.environ.get("COZMO_BASE_CLIP_LOOP_S", "18") or "0")
+            if clip_loop_hold <= 0:
+                clip_loop_hold = _intervalo_variar_base_s()
+            else:
+                clip_loop_hold = max(12.0, clip_loop_hold)
             if not _oled_tx_permitido(cli):
                 try:
                     ping_sessao_base(cli)
@@ -1433,10 +1439,10 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
                 and agora_clip - _ultimo_exibir_clip_em < hold_sono
             ):
                 _aguardar_fim_clip_loop(
-                cli,
-                g,
-                max_s=min(_intervalo_variar_base_s(), _oled_max_estatico_s()),
-            )
+                    cli,
+                    g,
+                    max_s=min(clip_loop_hold, _oled_max_estatico_s()),
+                )
                 continue
             _exibir_clip_base(cli, g, forcar=modo_sono_oled_ativo())
             if not _oled_tx_permitido(cli):
@@ -1446,7 +1452,7 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
             _aguardar_fim_clip_loop(
                 cli,
                 g,
-                max_s=min(_intervalo_variar_base_s(), _oled_max_estatico_s()),
+                max_s=min(clip_loop_hold, _oled_max_estatico_s()),
             )
             if modo_sono_oled_ativo():
                 from cozmo_companion.core.anims import pool_sono_oled_base

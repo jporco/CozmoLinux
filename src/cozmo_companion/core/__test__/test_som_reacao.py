@@ -28,8 +28,13 @@ class FakeCompanion(CompanionVoz):
 class TestSomReacao(unittest.TestCase):
     def test_pacotes_susto(self) -> None:
         pkts = som_reacao.pacotes_som_reacao("susto")
-        self.assertGreaterEqual(len(pkts), 3)
+        self.assertGreaterEqual(len(pkts), 8)
         self.assertTrue(all(getattr(pkt, "samples", b"") for pkt in pkts))
+
+    def test_latido_tem_frase_sonora_sem_estalo_unico(self) -> None:
+        pkts = som_reacao.pacotes_som_reacao("latido")
+        self.assertGreaterEqual(len(pkts), 12)
+        self.assertTrue(all(len(getattr(pkt, "samples", b"")) == 744 for pkt in pkts))
 
     def test_barulho_chama_som_e_animacao(self) -> None:
         c = FakeCompanion()

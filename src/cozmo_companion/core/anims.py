@@ -207,6 +207,13 @@ GRUPOS_BASE_OLED_VARIAR_BLOQUEIO = frozenset(
         "Sleeping",
         "StartSleeping",
         "sleeploop",
+        "GameSetupIdle",
+        "RepairIdleFullyRepaired",
+        "SparkIdle",
+        "CozmoSaysIdle",
+        "BuildPyramidLookForFace",
+        "NothingToDoBoredIntro",
+        "NothingToDoBoredIdle",
     }
 )
 

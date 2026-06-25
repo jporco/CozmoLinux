@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import time
 
 import pycozmo
 from pycozmo import protocol_encoder
 
-from cozmo_companion.core.som_notif import gerar_frame_beep
 from cozmo_companion.voice.tts import (
     _enviar_sinal_udp,
     _respiro_udp,
@@ -21,23 +21,84 @@ from cozmo_companion.voice.tts import (
 logger = logging.getLogger("cozmo.som")
 
 
-_PADROES: dict[str, tuple[tuple[float, int], ...]] = {
-    "susto": ((1320, 27000), (860, 23000), (1180, 26000), (720, 21000), (980, 21000)),
-    "curioso": ((740, 22000), (980, 25000), (1240, 24000), (860, 21000)),
-    "latido": ((520, 30000), (0, 0), (650, 30000), (0, 0), (520, 27000), (720, 24000)),
-    "feliz": ((880, 22000), (1120, 25000), (1480, 24000), (1120, 22000), (920, 21000)),
+_SAMPLES_POR_FRAME = 744
+_FRAME_RATE = 15000
+
+# (freq_hz, amplitude, frames). Mais frames por nota evita o "estalo" de
+# um unico pacote e deixa o alto-falante do Cozmo soar mais parecido com bleeps
+# expressivos do app original.
+_PADROES: dict[str, tuple[tuple[float, int, int], ...]] = {
+    "susto": (
+        (1320, 30000, 2),
+        (940, 28000, 3),
+        (1240, 31000, 2),
+        (760, 26000, 2),
+    ),
+    "curioso": (
+        (620, 26000, 3),
+        (820, 30000, 3),
+        (1120, 31000, 4),
+        (900, 25000, 2),
+    ),
+    "latido": (
+        (360, 32700, 3),
+        (520, 32700, 4),
+        (0, 0, 1),
+        (430, 32700, 3),
+        (660, 32000, 4),
+        (0, 0, 1),
+        (520, 28500, 2),
+    ),
+    "feliz": (
+        (760, 26000, 3),
+        (980, 30000, 3),
+        (1280, 31500, 4),
+        (1040, 28500, 3),
+        (1360, 30000, 3),
+    ),
 }
 
 
+def _amostra_ulaw(valor: float) -> int:
+    return pycozmo.audio.u_law_encoding(max(-32768, min(32767, int(valor)))) & 0xFF
+
+
+def _frame_tom(freq_hz: float, amplitude: int, phase: float, *, fade_in: bool, fade_out: bool) -> tuple[protocol_encoder.OutputAudio, float]:
+    if freq_hz <= 0 or amplitude <= 0:
+        samples = bytes(_amostra_ulaw(0) for _ in range(_SAMPLES_POR_FRAME))
+        return protocol_encoder.OutputAudio(samples=samples), phase
+
+    step = 2.0 * math.pi * freq_hz / _FRAME_RATE
+    raw = bytearray()
+    for i in range(_SAMPLES_POR_FRAME):
+        env = 1.0
+        if fade_in:
+            env = min(env, i / 96.0)
+        if fade_out:
+            env = min(env, (_SAMPLES_POR_FRAME - 1 - i) / 96.0)
+        raw.append(_amostra_ulaw(math.sin(phase) * amplitude * max(0.0, env)))
+        phase = (phase + step) % (2.0 * math.pi)
+    return protocol_encoder.OutputAudio(samples=bytes(raw)), phase
+
+
 def pacotes_som_reacao(tipo: str = "susto") -> list[protocol_encoder.OutputAudio]:
-    """Gera pacotes u-law pequenos, sem depender de espeak/paplay."""
+    """Gera uma frase sonora curta em u-law direto para o alto-falante do Cozmo."""
     padrao = _PADROES.get(tipo, _PADROES["curioso"])
-    max_pkts = max(1, int(os.environ.get("SOM_REACAO_PACOTES", "6")))
+    max_pkts = max(1, int(os.environ.get("SOM_REACAO_PACOTES", "14")))
     phase = 0.0
     pkts: list[protocol_encoder.OutputAudio] = []
-    for freq, amp in padrao[:max_pkts]:
-        pkt, phase = gerar_frame_beep(freq_hz=max(1.0, freq), amplitude=amp, phase=phase)
-        pkts.append(pkt)
+    for freq, amp, frames in padrao:
+        for frame in range(max(1, frames)):
+            if len(pkts) >= max_pkts:
+                return pkts
+            pkt, phase = _frame_tom(
+                freq,
+                amp,
+                phase,
+                fade_in=frame == 0,
+                fade_out=frame == frames - 1,
+            )
+            pkts.append(pkt)
     return pkts
 
 
@@ -69,7 +130,7 @@ def tocar_som_reacao(
 
     na_base = em_base(cli)
     base_vol = volume if volume is not None else int(os.environ.get("COZMO_VOLUME", "62000"))
-    boost = int(os.environ.get("SOM_REACAO_VOLUME_BOOST", "3500"))
+    boost = int(os.environ.get("SOM_REACAO_VOLUME_BOOST", "8000"))
     vol = max(30000, min(65535, base_vol + boost))
     try:
         cli.set_volume(vol)
@@ -89,8 +150,8 @@ def tocar_som_reacao(
     else:
         face_was, anim_was = modo_tts_preparar(cli)
 
-    pausa = float(os.environ.get("SOM_REACAO_PAUSA_S", "0.035"))
-    respiro = float(os.environ.get("SOM_REACAO_RESPIRO_S", "0.06"))
+    pausa = float(os.environ.get("SOM_REACAO_PAUSA_S", "0.006"))
+    respiro = float(os.environ.get("SOM_REACAO_RESPIRO_S", "0.025"))
     enviados = 0
     try:
         pulso_ping(cli, 2)

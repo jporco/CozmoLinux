@@ -28,6 +28,7 @@ CHUNK_PACOTES = int(os.environ.get("TTS_CHUNK_PACOTES", "3"))
 CHUNK_PAUSA_S = float(os.environ.get("TTS_CHUNK_PAUSA_S", "1.4"))
 PACOTE_MS = float(os.environ.get("TTS_PACKET_MS", "35"))
 ESPEAK_RATE = int(os.environ.get("TTS_ESPEAK_RATE", "175"))
+_PKTS_CACHE: dict[tuple[str, str, int], tuple[protocol_encoder.OutputAudio, ...]] = {}
 
 
 def _enviar_sinal_udp(
@@ -105,7 +106,7 @@ def _bytes_to_cozmo(byte_string: bytes, rate_correction: int, channels: int) -> 
     n = channels * rate_correction
     bs = struct.unpack(f"{int(len(byte_string) / 2)}h", byte_string)[0::n]
     for i, s in enumerate(bs):
-        out[i] = min(255, max(0, u_law_encoding(s)))
+        out[i] = u_law_encoding(s) & 0xFF
     return out
 
 
@@ -246,6 +247,24 @@ def _espeak_wav(caminho: Path, texto: str, voz: str) -> None:
     raise RuntimeError("espeak indisponível")
 
 
+def _pkts_espeak_cache(texto: str, voz: str) -> list[protocol_encoder.OutputAudio]:
+    chave = (texto, voz, ESPEAK_RATE)
+    if chave in _PKTS_CACHE:
+        return list(_PKTS_CACHE[chave])
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        caminho = Path(tmp.name)
+    try:
+        _espeak_wav(caminho, texto, voz)
+        pkts = _load_wav(caminho)
+        limite_cache = int(os.environ.get("TTS_CACHE_MAX", "64"))
+        if len(_PKTS_CACHE) >= limite_cache:
+            _PKTS_CACHE.pop(next(iter(_PKTS_CACHE)))
+        _PKTS_CACHE[chave] = tuple(pkts)
+        return pkts
+    finally:
+        caminho.unlink(missing_ok=True)
+
+
 def _respiro_udp(
     cli: pycozmo.Client,
     segundos: float,
@@ -310,8 +329,7 @@ def falar(
         logger.info("TTS sinal sem audio sintetico: %s", texto[:40])
         return 0
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        caminho = Path(tmp.name)
+    caminho: Path | None = None
 
     from cozmo_companion.core.motor_cozmo import modo_tts_preparar, modo_tts_restaurar
 
@@ -346,11 +364,10 @@ def falar(
                 pkts = _pkts_sinal_sintetico(texto)
                 logger.debug("TTS sinal sintético: %s (%d pacotes)", texto, len(pkts))
             else:
-                _espeak_wav(caminho, texto, voz)
-                pkts = _load_wav(caminho)
+                pkts = _pkts_espeak_cache(texto, voz)
         except Exception as exc:
-            logger.warning("WAV TTS indisponível (%s) — sinal sintético", exc)
-            pkts = _pkts_sinal_fallback()
+            logger.warning("TTS voz curta indisponível (%s) — sem áudio ruim", exc)
+            pkts = []
         if not pkts:
             logger.warning("Áudio vazio para: %s", texto[:50])
             return 0
@@ -434,4 +451,5 @@ def falar(
         return enviados
     finally:
         modo_tts_restaurar(cli, face_was, anim_was, na_base=na_base)
-        caminho.unlink(missing_ok=True)
+        if caminho is not None:
+            caminho.unlink(missing_ok=True)

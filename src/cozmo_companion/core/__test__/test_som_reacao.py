@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from cozmo_companion.core import som_reacao
-from cozmo_companion.core.companion_voz import CompanionVoz, REACOES_BARULHO
+from cozmo_companion.core.companion_voz import CompanionVoz, REACOES_BARULHO, REACOES_LATIDO
 
 
 class FakeCompanion(CompanionVoz):
@@ -38,18 +38,30 @@ class TestSomReacao(unittest.TestCase):
 
     def test_barulho_chama_animacao_oficial_sem_som_sintetico(self) -> None:
         c = FakeCompanion()
-        with patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar:
+        with (
+            patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
+            patch.object(c, "_pedir_fala_espontanea", return_value=True) as falar,
+        ):
             c._stt_fila.put(("som", "barulho", 6400.0))
             c._processar_stt()
-        c._fila.enviar_anim.assert_called_once_with(REACOES_BARULHO, prioridade=True)
+        falar.assert_called_once_with(ANY, tela=None, grupos=REACOES_BARULHO, prioridade=True)
         tocar.assert_not_called()
         c._vida.registrar_interacao.assert_called_once()
 
     def test_latido_texto_dispara_animacao_sem_som_sintetico(self) -> None:
         c = FakeCompanion()
-        with patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar:
+        with (
+            patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
+            patch.object(c, "_pedir_fala_espontanea", return_value=True) as falar,
+        ):
             c._tratar_texto_ouvido("ao")
-        c._fila.enviar_anim.assert_called_once()
+        falar.assert_called_once()
+        falar.assert_called_once_with(
+            "au au",
+            tela=None,
+            grupos=REACOES_LATIDO,
+            prioridade=True,
+        )
         tocar.assert_not_called()
 
     def test_volume_reacao_recebe_boost(self) -> None:

@@ -555,7 +555,7 @@ class CompanionVoz:
         self._stt_fila.put(("som", tipo, valor))
 
     def _som_reacao_permitido(self) -> bool:
-        if os.environ.get("SOM_REACAO_ENABLED", "1") != "1":
+        if os.environ.get("REACAO_OFICIAL_ENABLED", "1") != "1":
             return False
         if self._falando or self._llm_ocupado:
             return False
@@ -576,12 +576,21 @@ class CompanionVoz:
             return False
         return True
 
-    def _pedir_fala_espontanea(self, fala: str, *, tela: str | None = None) -> bool:
+    def _pedir_fala_espontanea(
+        self,
+        fala: str,
+        *,
+        tela: str | None = None,
+        grupos: tuple[str, ...] | None = None,
+        prioridade: bool = False,
+    ) -> bool:
         if not fala or not self._fala_espontanea_permitida():
             return False
-        logger.info("Interacao espontanea: %s", fala[:32])
-        grupos = ("CodeLabReactHappy", "CodeLabHappy", "InterestedFace", "ReactToPokeReaction")
-        self._fila.enviar_anim(grupos, prioridade=False)
+        logger.info("Fala curta espontanea: %s", fala[:32])
+        if grupos is None:
+            grupos = ("CodeLabReactHappy", "CodeLabHappy", "InterestedFace", "ReactToPokeReaction")
+        self._fila.enviar_anim(grupos, prioridade=prioridade)
+        self._pedir_fala(fala, tela=tela, na_base_ok=True, prioridade=prioridade)
         return True
 
     def _talvez_ecoar_texto(self, texto: str) -> bool:
@@ -615,7 +624,12 @@ class CompanionVoz:
             20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base
         )
         grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
-        self._fila.enviar_anim(grupos, prioridade=True)
+        self._pedir_fala_espontanea(
+            random.choice(("opa", "ei", "calma")),
+            tela=None,
+            grupos=grupos,
+            prioridade=True,
+        )
 
     def _reagir_latido(self, texto: str = "") -> None:
         agora = time.monotonic()
@@ -628,7 +642,7 @@ class CompanionVoz:
             18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base
         )
         grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
-        self._fila.enviar_anim(grupos, prioridade=True)
+        self._pedir_fala_espontanea("au au", tela=None, grupos=grupos, prioridade=True)
 
     def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:
         if tipo == "barulho":

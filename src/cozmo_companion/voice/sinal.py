@@ -64,10 +64,15 @@ def sinal_para(pergunta: str = "", fala: str = "") -> str:
         return "Hora"
     if parece_clima(u) or (f and parece_clima(f)):
         return "Tempo"
+    lf = f.lower()
+    if "te vi" in lf or "vendo" in lf:
+        return "Te vi"
+    if "tchau" in u or "tchau" in lf or "até" in u or "ate" in u:
+        return "Tchau"
     if parece_saudacao_curta(u) or (f and parece_saudacao_curta(f)):
-        return random.choice(("Oi", "Opa", "Beep"))
+        return random.choice(("Oi", "Opa"))
     if "au" in u or re.search(r"\bau\b", f, re.I):
-        return "Au"
+        return "Au au"
 
     if f:
         palavra = re.sub(r"[^\wáàâãéêíóôõúüçÁÀÂÃÉÊÍÓÔÕÚÜÇ]", "", f.split()[0])

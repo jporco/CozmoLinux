@@ -13,6 +13,7 @@ from cozmo_companion.voice.tts import (
     _pkts_sinal_sintetico,
     falar,
 )
+from cozmo_companion.voice.sinal import sinal_para
 
 
 class TestTtsDuracao(unittest.TestCase):
@@ -21,7 +22,7 @@ class TestTtsDuracao(unittest.TestCase):
 
 
 class TestTtsSinalSintetico(unittest.TestCase):
-    def test_modo_sinal_nao_toca_audio_sintetico_por_padrao(self):
+    def test_modo_sinal_audio_off_nao_toca(self):
         from unittest.mock import MagicMock, patch
 
         cli = MagicMock()
@@ -31,6 +32,28 @@ class TestTtsSinalSintetico(unittest.TestCase):
         ):
             self.assertEqual(falar(cli, "Oi"), 0)
         enviar.assert_not_called()
+
+    def test_modo_sinal_voz_curta_envia_pacotes(self):
+        from unittest.mock import MagicMock, patch
+
+        cli = MagicMock()
+        with (
+            patch.dict(
+                "os.environ",
+                {"TTS_MODO": "sinal", "TTS_SINAL_AUDIO": "1", "TTS_SINAL_VOZ": "1", "TTS_SINAL_PACOTES": "3"},
+                clear=False,
+            ),
+            patch("cozmo_companion.voice.tts._enviar_sinal_udp") as enviar,
+            patch("cozmo_companion.voice.tts.pulso_ping"),
+            patch("cozmo_companion.voice.tts.estabilizar_pos_audio", return_value=True),
+        ):
+            self.assertEqual(falar(cli, "Oi"), 3)
+        self.assertEqual(enviar.call_count, 3)
+
+    def test_sinal_preserva_frases_curtas_de_pet(self):
+        self.assertEqual(sinal_para("", "au au"), "Au au")
+        self.assertEqual(sinal_para("", "to te vendo"), "Te vi")
+
     def test_sinal_sintetico_gera_pacotes_cozmo(self):
         pkts = _pkts_sinal_sintetico("Oi")
         self.assertGreaterEqual(len(pkts), 3)

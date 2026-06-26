@@ -8,7 +8,7 @@ import os
 import time
 
 import pycozmo
-from pycozmo import protocol_encoder
+from pycozmo import protocol_encoder, robot
 
 from cozmo_companion.voice.tts import (
     _enviar_sinal_udp,
@@ -22,7 +22,7 @@ logger = logging.getLogger("cozmo.som")
 
 
 _SAMPLES_POR_FRAME = 744
-_FRAME_RATE = 15000
+_FRAME_RATE = _SAMPLES_POR_FRAME * robot.FRAME_RATE
 
 # (freq_hz, amplitude, frames). Mais frames por nota evita o "estalo" de
 # um unico pacote e deixa o alto-falante do Cozmo soar mais parecido com bleeps

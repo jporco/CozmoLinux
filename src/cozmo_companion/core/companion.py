@@ -255,6 +255,9 @@ class Companion(CompanionVoz):
             return
         if self._vida.dormindo or self._fila.ocupada or self._falando or self._llm_ocupado:
             return
+        fala = self._espontaneo.fala_rosto(evento)
+        if fala and self._pedir_fala_espontanea(fala, tela="Te vi"):
+            return
         safety = self._safety_state()
         if not safety.animation_allowed or not self._gov.pode("anim"):
             return

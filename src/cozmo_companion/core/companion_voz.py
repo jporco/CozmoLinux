@@ -39,6 +39,7 @@ from cozmo_companion.voice.sinal import (
     sinal_para,
     texto_tela_de_fala,
 )
+from cozmo_companion.voice.espontaneo import FalaEspontanea
 from cozmo_companion.voice.stt import Ouvinte
 from cozmo_companion.voice.tts import falar, pulso_ping, rx_estavel_pos_tts, rx_frames
 from cozmo_companion.voice.wake import WakeWord
@@ -108,6 +109,7 @@ class CompanionVoz:
         self._stt_base_wake_ate = 0.0
         self._ultimo_barulho = 0.0
         self._ultimo_latido = 0.0
+        self._espontaneo = FalaEspontanea()
         self.ouvinte: Ouvinte | None = None
         self._ouvinte_notif: OuvinteNotificacoes | None = None
         self._voz_cmd = Path(
@@ -295,8 +297,13 @@ class CompanionVoz:
             from cozmo_companion.core.motor_cozmo import (
                 _clip_loop_vivo,
                 base_oled_loop_segurado,
+                pausar_base_oled_para_texto,
+                segurar_base_oled_loop,
             )
 
+            hold_tts = float(os.environ.get("COZMO_TTS_SINAL_QUIET_S", "8")) + 1.0
+            segurar_base_oled_loop(hold_tts)
+            pausar_base_oled_para_texto(hold_tts, self.cli)
             if not base_oled_loop_segurado() and not _clip_loop_vivo():
                 try:
                     ligar_oled_base(
@@ -509,6 +516,9 @@ class CompanionVoz:
         if self._na_base_efetivo() and not comando_util(t):
             if agora < self._cooldown_voz_base_ate:
                 return
+            self._cooldown_voz_base_ate = agora + float(
+                os.environ.get("COOLDOWN_VOZ_BASE_S", "12")
+            )
         self._ultima_pergunta_txt = t
         self._ultima_pergunta_em = agora
         from cozmo_companion.voice.acoes_llm import (
@@ -553,6 +563,31 @@ class CompanionVoz:
             return False
         return True
 
+    def _fala_espontanea_permitida(self) -> bool:
+        if os.environ.get("ESPONTANEO_ENABLED", "1") != "1":
+            return False
+        if self._falando or self._llm_ocupado:
+            return False
+        if self._periodo_quieto_ativo():
+            return False
+        if getattr(self, "_vida", None) is not None and self._vida.dormindo:
+            return False
+        if getattr(self, "_fila", None) is not None and not self._fila.livre:
+            return False
+        return True
+
+    def _pedir_fala_espontanea(self, fala: str, *, tela: str | None = None) -> bool:
+        if not fala or not self._fala_espontanea_permitida():
+            return False
+        logger.info("Interacao espontanea: %s", fala[:32])
+        grupos = ("CodeLabReactHappy", "CodeLabHappy", "InterestedFace", "ReactToPokeReaction")
+        self._fila.enviar_anim(grupos, prioridade=False)
+        return True
+
+    def _talvez_ecoar_texto(self, texto: str) -> bool:
+        self._espontaneo.registrar_ouvido(texto)
+        return False
+
     def _tocar_som_reacao(self, tipo: str) -> bool:
         from cozmo_companion.core.som_reacao import tocar_som_reacao
 
@@ -581,7 +616,6 @@ class CompanionVoz:
         )
         grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
         self._fila.enviar_anim(grupos, prioridade=True)
-        self._tocar_som_reacao(random.choice(("susto", "curioso", "feliz")))
 
     def _reagir_latido(self, texto: str = "") -> None:
         agora = time.monotonic()
@@ -595,7 +629,6 @@ class CompanionVoz:
         )
         grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
         self._fila.enviar_anim(grupos, prioridade=True)
-        self._tocar_som_reacao("latido")
 
     def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:
         if tipo == "barulho":
@@ -637,6 +670,7 @@ class CompanionVoz:
             if os.environ.get("BASE_VOZ_SOMENTE_WAKE", "1") == "1":
                 if not (contem_wake(texto) or parece_saudacao(texto)):
                     logger.info("Ignorado (base): %s", texto)
+                    self._talvez_ecoar_texto(texto)
                     return
             self._ao_pergunta_voz(texto)
             return
@@ -646,6 +680,8 @@ class CompanionVoz:
             or parece_comando_curto(texto)
         ):
             self._ao_pergunta_voz(texto)
+            return
+        self._talvez_ecoar_texto(texto)
 
     def _stt_receber_texto(self, texto: str) -> None:
         self._stt_fila.put(("texto", texto))

@@ -1011,6 +1011,10 @@ def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bo
     )
     if agora - _ultimo_variar_clip < intervalo:
         return False
+    if forcado and agora - _ultimo_variar_clip < float(
+        os.environ.get("COZMO_BASE_VARIAR_FORCADO_MIN_S", "8")
+    ):
+        return False
     if not forcado and not escuro and random.random() > float(
         os.environ.get("COZMO_BASE_VARIAR_CHANCE", "0.38")
     ):
@@ -1480,15 +1484,17 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
 
                 disp = set(cli.animation_groups.keys())
                 pool_n = len(_pool_oled_com_frames(cli, pool_variacao_oled_base(disp, cli)))
-                g2 = _escolher_proximo_clip_base(cli)
-                with _charger_oled_lock:
-                    _charger_oled_nome = g2
-                _ultimo_variar_clip = time.monotonic()
-                logger.info(
-                    "Base OLED: variar clip → %s (pool=%d)",
-                    g2,
-                    pool_n,
-                )
+                agora_var = time.monotonic()
+                if agora_var - _ultimo_variar_clip >= _intervalo_variar_base_s():
+                    g2 = _escolher_proximo_clip_base(cli)
+                    with _charger_oled_lock:
+                        _charger_oled_nome = g2
+                    _ultimo_variar_clip = agora_var
+                    logger.info(
+                        "Base OLED: variar clip → %s (pool=%d)",
+                        g2,
+                        pool_n,
+                    )
         except Exception as exc:
             logger.warning("loop_clip_base_continuo %s: %s", g or "?", exc)
             if _clip_loop_stop.wait(1.0):

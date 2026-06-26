@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import struct
@@ -136,37 +137,105 @@ def _load_wav(caminho: Path) -> list[protocol_encoder.OutputAudio]:
     return pkts
 
 
-def _pkts_sinal_fallback() -> list[protocol_encoder.OutputAudio]:
-    """Beep sintético — sem espeak (WAV vazio / espeak indisponível)."""
-    from cozmo_companion.core.som_notif import gerar_frame_beep
+def _amostra_ulaw(valor: float) -> int:
+    return u_law_encoding(max(-32768, min(32767, int(valor)))) & 0xFF
 
-    pkt, _ = gerar_frame_beep()
-    return [pkt]
+
+def _frame_tom_sinal(
+    freq_hz: float,
+    amplitude: int,
+    phase: float,
+    *,
+    fade_in: bool,
+    fade_out: bool,
+) -> tuple[protocol_encoder.OutputAudio, float]:
+    samples_por_frame = 744
+    if freq_hz <= 0 or amplitude <= 0:
+        samples = bytes(_amostra_ulaw(0) for _ in range(samples_por_frame))
+        return protocol_encoder.OutputAudio(samples=samples), phase
+
+    sr = samples_por_frame / FRAME_S
+    step = 2.0 * math.pi * freq_hz / sr
+    ramp = 110.0
+    out = bytearray(samples_por_frame)
+    for i in range(samples_por_frame):
+        env = 1.0
+        if fade_in:
+            env = min(env, i / ramp)
+        if fade_out:
+            env = min(env, (samples_por_frame - 1 - i) / ramp)
+        sample = math.sin(phase) * amplitude * max(0.0, env)
+        out[i] = _amostra_ulaw(sample)
+        phase = (phase + step) % (2.0 * math.pi)
+    return protocol_encoder.OutputAudio(samples=bytes(out)), phase
+
+
+def _padrao_sinal(texto: str) -> tuple[tuple[float, int], ...]:
+    t = texto.strip().lower()
+    if t.startswith(("oi", "ola", "olá")):
+        return ((740.0, 1), (980.0, 2), (1240.0, 1))
+    if t.startswith("opa"):
+        return ((620.0, 1), (880.0, 1), (1180.0, 2))
+    if t.startswith(("tchau", "xau")):
+        return ((1040.0, 1), (820.0, 1), (620.0, 2))
+    if t.startswith(("tempo", "chuva", "grau")):
+        return ((560.0, 1), (760.0, 1), (960.0, 1), (760.0, 1))
+    if t.startswith(("hora", "sao", "são")):
+        return ((960.0, 1), (760.0, 2), (960.0, 1))
+    if t.startswith(("au", "ao")):
+        return ((360.0, 2), (520.0, 2), (0.0, 1), (460.0, 1))
+    return ((660.0, 1), (900.0, 1), (1120.0, 2))
+
+
+def _pkts_sinal_sintetico(texto: str = "") -> list[protocol_encoder.OutputAudio]:
+    """Bipes curtos no formato nativo do Cozmo, sem voz do PC/espeak."""
+    limite = max(1, int(os.environ.get("TTS_SINAL_PACOTES", "6")))
+    amp = max(3000, min(22000, int(os.environ.get("TTS_SINAL_AMP", "14500"))))
+    phase = 0.0
+    pkts: list[protocol_encoder.OutputAudio] = []
+    for freq, frames in _padrao_sinal(texto):
+        for frame in range(max(1, frames)):
+            if len(pkts) >= limite:
+                return pkts
+            pkt, phase = _frame_tom_sinal(
+                freq,
+                amp if freq > 0 else 0,
+                phase,
+                fade_in=frame == 0,
+                fade_out=frame == frames - 1,
+            )
+            pkts.append(pkt)
+    return pkts
+
+
+def _pkts_sinal_fallback() -> list[protocol_encoder.OutputAudio]:
+    """Fallback sintético curto — sem espeak/paplay no PC."""
+    return _pkts_sinal_sintetico("beep")
 
 
 def _espeak_wav(caminho: Path, texto: str, voz: str) -> None:
-    """Gera WAV via espeak/espeak-ng — falha explícita se arquivo inválido."""
+    """Gera WAV via espeak/espeak-ng sem abrir a saída de áudio do PC."""
     bins = ("espeak-ng", "espeak")
     last_err: Exception | None = None
     for bin_name in bins:
         try:
-            subprocess.run(
-                [
-                    bin_name,
-                    "-q",
-                    "-v",
-                    voz,
-                    "-s",
-                    str(ESPEAK_RATE),
-                    "-g",
-                    "4",
-                    "-w",
-                    str(caminho),
-                    texto,
-                ],
-                check=True,
-                capture_output=True,
-            )
+            with caminho.open("wb") as out:
+                subprocess.run(
+                    [
+                        bin_name,
+                        "--stdout",
+                        "-v",
+                        voz,
+                        "-s",
+                        str(ESPEAK_RATE),
+                        "-g",
+                        "4",
+                        texto,
+                    ],
+                    check=True,
+                    stdout=out,
+                    stderr=subprocess.PIPE,
+                )
             if caminho.is_file() and caminho.stat().st_size > 44:
                 return
             last_err = RuntimeError(f"{bin_name} não gerou WAV válido")
@@ -237,6 +306,9 @@ def falar(
         pausa = float(os.environ.get("TTS_CHUNK_PAUSA_S", str(CHUNK_PAUSA_S)))
     if not texto:
         return 0
+    if modo_sinal_ativo and os.environ.get("TTS_SINAL_AUDIO", "0") != "1":
+        logger.info("TTS sinal sem audio sintetico: %s", texto[:40])
+        return 0
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         caminho = Path(tmp.name)
@@ -264,9 +336,18 @@ def falar(
         cli.anim_controller.enable_procedural_face(True)
 
     try:
+        usar_sinal_sintetico = (
+            modo_sinal_ativo
+            and os.environ.get("TTS_SINAL_AUDIO", "0") == "1"
+            and os.environ.get("TTS_SINAL_VOZ", "0") != "1"
+        )
         try:
-            _espeak_wav(caminho, texto, voz)
-            pkts = _load_wav(caminho)
+            if usar_sinal_sintetico:
+                pkts = _pkts_sinal_sintetico(texto)
+                logger.debug("TTS sinal sintético: %s (%d pacotes)", texto, len(pkts))
+            else:
+                _espeak_wav(caminho, texto, voz)
+                pkts = _load_wav(caminho)
         except Exception as exc:
             logger.warning("WAV TTS indisponível (%s) — sinal sintético", exc)
             pkts = _pkts_sinal_fallback()
@@ -297,52 +378,58 @@ def falar(
         pulso_ping(cli, 2)
         enviados = 0
 
+        if modo_sinal_ativo:
+            for i, pkt in enumerate(pkts):
+                if cancelar and cancelar():
+                    logger.info("TTS interrompido (%d/%d pacotes)", i, total)
+                    break
+                _enviar_sinal_udp(cli, pkt, manter_face=manter_face)
+                enviados += 1
+                if servir and enviados % 4 == 0:
+                    servir()
+            _respiro_udp(
+                cli,
+                float(os.environ.get("TTS_SINAL_PAUSA_S", "0.8")),
+                entre_rajadas=entre_rajadas,
+                servir=servir,
+            )
+            pulso_ping(cli, 1)
+            estabilizar_pos_audio(cli, rx_antes)
+            return enviados
+
         i = 0
         while i < total:
             if cancelar and cancelar():
                 logger.info("TTS interrompido (%d/%d pacotes)", i, total)
                 break
             pkt = pkts[i]
-            if modo_sinal_ativo:
-                _enviar_sinal_udp(cli, pkt, manter_face=manter_face)
-                enviados += 1
-                _respiro_udp(
-                    cli,
-                    float(os.environ.get("TTS_SINAL_PAUSA_S", "0.8")),
-                    entre_rajadas=entre_rajadas,
-                    servir=servir,
-                )
-            else:
-                from cozmo_companion.core.motor_cozmo import base_oled_modo_direto, enviar_audio_fila
+            from cozmo_companion.core.motor_cozmo import base_oled_modo_direto, enviar_audio_fila
 
-                if na_base and base_oled_modo_direto():
-                    enviar_audio_fila(cli, pkt)
-                else:
-                    cli.anim_controller.play_audio([pkt])
-                enviados += 1
-                _respiro_udp(
-                    cli,
-                    _duracao_pkts(1),
-                    entre_rajadas=entre_rajadas,
-                    servir=servir,
-                )
+            if na_base and base_oled_modo_direto():
+                enviar_audio_fila(cli, pkt)
+            else:
+                cli.anim_controller.play_audio([pkt])
+            enviados += 1
+            _respiro_udp(
+                cli,
+                _duracao_pkts(1),
+                entre_rajadas=entre_rajadas,
+                servir=servir,
+            )
             i += 1
             if i < total:
                 logger.info("TTS pausa UDP (%d/%d pacotes)", i, total)
                 _respiro_udp(cli, pausa, entre_rajadas=entre_rajadas, servir=servir)
 
-        if not modo_sinal_ativo:
-            pulso_ping(cli, 2)
-            fim_espera = time.monotonic() + float(os.environ.get("TTS_DRAIN_S", "1.8"))
-            while time.monotonic() < fim_espera:
-                if cli.anim_controller.queue.is_empty():
-                    break
-                pulso_ping(cli, 1)
-                if servir:
-                    servir()
-                time.sleep(0.1)
-        else:
+        pulso_ping(cli, 2)
+        fim_espera = time.monotonic() + float(os.environ.get("TTS_DRAIN_S", "1.8"))
+        while time.monotonic() < fim_espera:
+            if cli.anim_controller.queue.is_empty():
+                break
             pulso_ping(cli, 1)
+            if servir:
+                servir()
+            time.sleep(0.1)
         estabilizar_pos_audio(cli, rx_antes)
         return enviados
     finally:

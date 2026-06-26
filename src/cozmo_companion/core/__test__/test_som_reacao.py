@@ -36,26 +36,21 @@ class TestSomReacao(unittest.TestCase):
         self.assertGreaterEqual(len(pkts), 12)
         self.assertTrue(all(len(getattr(pkt, "samples", b"")) == 744 for pkt in pkts))
 
-    def test_barulho_chama_som_e_animacao(self) -> None:
+    def test_barulho_chama_animacao_oficial_sem_som_sintetico(self) -> None:
         c = FakeCompanion()
-        with patch(
-            "cozmo_companion.core.som_reacao.tocar_som_reacao",
-            return_value=True,
-        ) as tocar:
+        with patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar:
             c._stt_fila.put(("som", "barulho", 6400.0))
             c._processar_stt()
         c._fila.enviar_anim.assert_called_once_with(REACOES_BARULHO, prioridade=True)
-        tocar.assert_called_once()
+        tocar.assert_not_called()
         c._vida.registrar_interacao.assert_called_once()
 
-    def test_latido_texto_dispara_reacao(self) -> None:
+    def test_latido_texto_dispara_animacao_sem_som_sintetico(self) -> None:
         c = FakeCompanion()
-        with patch(
-            "cozmo_companion.core.som_reacao.tocar_som_reacao",
-            return_value=True,
-        ) as tocar:
+        with patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar:
             c._tratar_texto_ouvido("ao")
-        tocar.assert_called_once()
+        c._fila.enviar_anim.assert_called_once()
+        tocar.assert_not_called()
 
     def test_volume_reacao_recebe_boost(self) -> None:
         cli = MagicMock()

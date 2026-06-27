@@ -26,7 +26,8 @@ class BageWeather:
     def __init__(self) -> None:
         self.lat = float(os.environ.get("BAGE_LAT", BAGE_LAT))
         self.lon = float(os.environ.get("BAGE_LON", BAGE_LON))
-        self.cidade = os.environ.get("BAGE_CIDADE", "Bagé")
+        self.cidade = os.environ.get("BAGE_CIDADE", "Bagé-RS")
+        self.tz = os.environ.get("BAGE_TZ", FUSO)
         self.cache_seg = float(os.environ.get("WEATHER_CACHE_S", 600))
         self._cache: Clima | None = None
 
@@ -36,7 +37,7 @@ class BageWeather:
             "latitude": self.lat,
             "longitude": self.lon,
             "current": "temperature_2m",
-            "timezone": FUSO,
+            "timezone": self.tz,
         }
         try:
             r = requests.get(url, params=params, timeout=8)

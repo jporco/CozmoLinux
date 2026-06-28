@@ -1302,6 +1302,24 @@ class Companion(CompanionVoz):
             quieto=quieto,
         )
 
+        if self._na_base_efetivo() and not g.rx_ok:
+            cortar_flood_udp_base(self.cli)
+            self._recuperador.tick_base(
+                self.cli,
+                g,
+                self._monitor_rx,
+                self._gov._medidor,
+                busy=busy,
+                quieto=quieto,
+                na_base=True,
+                ultimo_reconnect_udp=self._ultimo_reconnect_udp,
+                reconnect_udp=lambda: self._reconectar_sessao_udp(
+                    silencioso=False, forcado=True, cozmo01=True
+                ),
+                recuperar_inplace=lambda: self._recuperar_udp(forcado=True),
+            )
+            return
+
         if (busy or quieto) and g.rx_ok:
             return
 

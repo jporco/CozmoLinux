@@ -249,7 +249,6 @@ class GovernadorCozmo:
             fase = FaseLink.AMARELO if prev_ema else FaseLink.VERDE
         elif not wifi_ok:
             fase = FaseLink.VERMELHO
-            self._tokens = 0.0
             self._base_anim_livre = False
         elif not udp_vivo:
             fase = FaseLink.VERMELHO
@@ -263,7 +262,10 @@ class GovernadorCozmo:
             fase = FaseLink.VERDE
 
         self._fase = fase
-        self._refill(agora)
+        if wifi_ok:
+            self._refill(agora)
+        else:
+            self._tokens = 0.0
 
         reduzir = fase != FaseLink.VERDE or em_quieto
         abortar = (

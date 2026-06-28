@@ -1174,6 +1174,8 @@ class Companion(CompanionVoz):
 
         if not cozmo_alcanavel():
             wifi_ok = False
+            cortar_flood_udp_base(self.cli)
+            self._gov.marcar_quieto(float(os.environ.get("COZMO_OFFLINE_QUIET_S", "45")))
             if g.pedir_wifi and not busy:
                 wifi_ok = reconectar_wifi()
             elif (

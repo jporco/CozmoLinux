@@ -147,6 +147,7 @@ class TestGovernador(unittest.TestCase):
                 t = g.tick(cli, monitor_rx=rx, busy=False, quieto=False)
         self.assertEqual(t.fase, FaseLink.VERMELHO)
         self.assertFalse(t.wifi_ok)
+        self.assertEqual(g._tokens, 0.0)
         self.assertFalse(g.pode("anim", prioridade=True))
         self.assertFalse(g.pode("tts", prioridade=True))
         self.assertFalse(g.pode("oled", prioridade=True))

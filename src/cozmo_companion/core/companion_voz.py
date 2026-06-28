@@ -572,6 +572,9 @@ class CompanionVoz:
             return False
         if getattr(self, "_vida", None) is not None and self._vida.dormindo:
             return False
+        gov = getattr(self, "_gov", None)
+        if gov is not None and (getattr(gov, "ultimo_rx_ok", True) is False or gov.saturado()):
+            return False
         if getattr(self, "_fila", None) is not None and not self._fila.livre:
             return False
         return True

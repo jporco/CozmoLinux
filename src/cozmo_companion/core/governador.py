@@ -134,6 +134,8 @@ class GovernadorCozmo:
 
     def pode(self, acao: str, *, prioridade: bool = False) -> bool:
         agora = time.monotonic()
+        if self._wifi_ok is False:
+            return False
         if agora < self._quieto_ate and acao in ("espirito", "camera") and not prioridade:
             return False
 
@@ -247,6 +249,8 @@ class GovernadorCozmo:
             fase = FaseLink.AMARELO if prev_ema else FaseLink.VERDE
         elif not wifi_ok:
             fase = FaseLink.VERMELHO
+            self._tokens = 0.0
+            self._base_anim_livre = False
         elif not udp_vivo:
             fase = FaseLink.VERMELHO
         elif sat_inst or (not rx_ok and not busy and not quieto):

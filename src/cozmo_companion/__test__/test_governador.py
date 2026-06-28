@@ -132,6 +132,25 @@ class TestGovernador(unittest.TestCase):
         self.assertNotEqual(t.fase, FaseLink.VERMELHO)
         self.assertTrue(t.rx_ok)
 
+    @patch("cozmo_companion.core.governador.cozmo_alcanavel", return_value=False)
+    @patch("cozmo_companion.core.governador.cozmo_rota_ap", return_value=False)
+    @patch("cozmo_companion.core.governador.cozmo_ssid_visivel", return_value=False)
+    @patch("cozmo_companion.core.governador.wlan0_preso_cozmo", return_value=False)
+    @patch("cozmo_companion.core.governador.pode_tentar_wifi", return_value=False)
+    @patch("cozmo_companion.core.governador.ratio_udp", return_value=0.0)
+    def test_wifi_offline_bloqueia_acoes(self, _ratio, _pode, _preso, _ssid, _rota, _ping) -> None:
+        g = GovernadorCozmo()
+        rx = MonitorRx()
+        cli = MagicMock()
+        with patch.object(g._medidor, "amostra", return_value=(0, 360, 0.0)):
+            with patch.object(rx, "tick", return_value=False):
+                t = g.tick(cli, monitor_rx=rx, busy=False, quieto=False)
+        self.assertEqual(t.fase, FaseLink.VERMELHO)
+        self.assertFalse(t.wifi_ok)
+        self.assertFalse(g.pode("anim", prioridade=True))
+        self.assertFalse(g.pode("tts", prioridade=True))
+        self.assertFalse(g.pode("oled", prioridade=True))
+
 
 class TestMonitorRxBasePing(unittest.TestCase):
     @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)

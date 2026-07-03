@@ -42,10 +42,18 @@ palavra de ativação + STT (Vosk) e chat opcional (Ollama). Alvo oficial do
   TTS→pacotes de áudio (`voice/tts.py` via `espeak`).
 
 ### Testes / lint
-- Testes: `PYTHONPATH=src .venv/bin/python -m pytest src/cozmo_companion -q --import-mode=importlib`
+- Testes (modo canônico do README): `PYTHONPATH=src .venv/bin/python -m pytest src/cozmo_companion -q --import-mode=importlib` → **369 passam / 1 falha** conhecida.
 - Não há linter configurado no repo (sem ruff/flake8/black/pyproject).
-- Gotcha de teste (pré-existente, não é do ambiente):
-  `test_display.py::TestDisplay::test_envia_via_anim_controller` falha quando a
-  suíte roda inteira porque `test_motor_cozmo.py` seta o global
-  `motor._charger_keeper_ativo = True` sem restaurar (poluição de estado). O
-  teste passa isolado. Rode-o sozinho para validar OLED direto.
+- **NÃO** rode os testes num shell onde `config.env` foi exportado
+  (`set -a && source config.env`). As ~200 variáveis (ex.: `COZMO_OLED_DIRECT=1`)
+  vazam para o `os.environ` e quebram dezenas de testes que assumem os defaults
+  (com o env poluído chega a 44 falhas). Rode com env limpo, ex.:
+  `env -i HOME="$HOME" PATH="$PATH" PYTHONPATH=src .venv/bin/python -m pytest ...`
+  ou num shell separado do usado para rodar o app.
+- Gotcha de isolamento (pré-existente, não é do ambiente):
+  `test_display.py::TestDisplay::test_envia_via_anim_controller` falha na suíte
+  completa porque `keeper_base_ativo()` lê o thread global `_display_thread`
+  (motor_cozmo): algum teste anterior deixa o keeper vivo, então
+  `_oled_tx_direto()` manda por `conn.send` em vez de `display_image`. O teste
+  passa isolado. Rodar arquivos avulsos também pode falhar por estado de módulo
+  compartilhado; a referência é a suíte inteira via pytest importlib.

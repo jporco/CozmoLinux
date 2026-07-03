@@ -73,6 +73,20 @@ class TestFilaCozmo(unittest.TestCase):
         self.assertTrue(self.fila.vazia)
         self.assertEqual(self.oleds, ["Mesa"])
 
+    def test_fim_oled_forcado_base_restaura_keeper(self) -> None:
+        self.fila.enviar_oled("Livre", segundos=0.05, prioridade=True, forcado=True)
+        cli = MagicMock()
+        cli.battery_voltage = 4.0
+        with patch(
+            "cozmo_companion.core.motor_cozmo.liberar_base_oled_loop_hold"
+        ) as liberar:
+            with patch.object(self.fila, "_restaurar_rosto_pos_item") as restaurar:
+                self.fila.tick(cli)
+                time.sleep(0.14)
+                self.fila.tick(cli)
+        liberar.assert_called()
+        restaurar.assert_called_with(cli)
+
     def test_rejeita_tts_pesado(self) -> None:
         self.assertFalse(self.fila.enviar_sinal_tts("uma duas palavras"))
         self.assertEqual(len(self.fila._fila), 0)

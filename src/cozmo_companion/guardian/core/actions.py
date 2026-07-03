@@ -60,8 +60,8 @@ def perfil_normal(root: Path) -> None:
         logger.info("Override guardian removido — perfil normal")
 
 
-def reiniciar_companion() -> bool:
-    """Só `start` se inativo — nunca `restart` (mata sessão UDP do Cozmo)."""
+def reiniciar_companion(*, forcar: bool = False) -> bool:
+    """Inicia serviço morto; reinicia ativo somente com saúde estagnada."""
     from cozmo_companion.guardian.core.health import companion_via_lock
 
     if companion_via_lock():
@@ -76,6 +76,14 @@ def reiniciar_companion() -> bool:
         )
         estado_svc = st.stdout.strip()
         if estado_svc in ("active", "activating", "reloading"):
+            if forcar:
+                subprocess.run(
+                    ["systemctl", "--user", "restart", SERVICE],
+                    check=True,
+                    timeout=45,
+                )
+                logger.warning("Companion reiniciado pelo guardian (saúde estagnada)")
+                return True
             logger.info("Companion já %s — ignorando start", estado_svc)
             return False
         subprocess.run(

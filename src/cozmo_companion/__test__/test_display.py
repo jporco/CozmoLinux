@@ -69,11 +69,20 @@ class TestDisplay(unittest.TestCase):
 
         cli = MagicMock()
         t = Tela(cli)
-        with patch.dict(
-            "os.environ",
-            {"COZMO_OLED_DIRECT": "0", "COZMO_BASE_OLED_MODE": "anim"},
+        with patch(
+            "cozmo_companion.core.motor_cozmo._oled_tx_direto",
+            return_value=False,
         ):
-            t.mostrar("Teste", segundos=8.0)
+            with patch.dict(
+                "os.environ",
+                {
+                    "COZMO_OLED_DIRECT": "0",
+                    "COZMO_BASE_OLED_MODE": "anim",
+                    "COZMO_BASE_PULSE_PROC": "0",
+                    "COZMO_BASE_KEEPER_VIVO": "0",
+                },
+            ):
+                t.mostrar("Teste", segundos=8.0)
         cli.anim_controller.display_image.assert_called()
         cli.conn.send.assert_not_called()
 

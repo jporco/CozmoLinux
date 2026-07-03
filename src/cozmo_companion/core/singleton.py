@@ -5,7 +5,6 @@ from __future__ import annotations
 import atexit
 import logging
 import os
-import sys
 from pathlib import Path
 
 logger = logging.getLogger("cozmo.singleton")

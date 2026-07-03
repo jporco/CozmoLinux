@@ -30,6 +30,9 @@ _modo_proc_lock = threading.Lock()
 _display_lock = threading.Lock()
 _display_stop = threading.Event()
 _display_thread: threading.Thread | None = None
+_display_generation = 0
+_display_keeper_grupo: str | None = None
+_display_keeper_hz = 0.0
 _oled_keepalive_stop = threading.Event()
 _oled_keepalive_thread: threading.Thread | None = None
 _ultimo_exibir_clip_grupo = ""
@@ -70,9 +73,11 @@ _manter_sono_semear_ultimo = 0.0
 _clip_loop_stop = threading.Event()
 _clip_loop_thread: threading.Thread | None = None
 _clip_loop_start_lock = threading.Lock()
+_clip_loop_generation = 0
 _base_oled_loop_hold_ate: float = 0.0
 _base_oled_loop_hold_desde: float = 0.0
 _ultimo_watchdog_oled: float = 0.0
+_base_oled_anim_loop_pausado_ate: float = 0.0
 
 
 def definir_modo_sono_oled(dormindo: bool) -> None:
@@ -147,10 +152,34 @@ def sono_oled_texto_ativo() -> bool:
     return _sono_oled_texto_ativo
 
 
+def sono_tela_escura_ativo() -> bool:
+    return modo_sono_oled_ativo() and os.environ.get("SONO_TELA_ESCURA", "0") == "1"
+
+
+def apagar_oled_para_sono(cli: "pycozmo.Client") -> None:
+    """Interrompe produtores OLED; Tela envia e mantém o quadro preto."""
+    definir_modo_sono_oled(True)
+    _parar_loop_clip_base(timeout=2.0)
+    _parar_display_keeper()
+    _parar_oled_keepalive_base()
+    try:
+        cli.cancel_anim()
+    except Exception:
+        pass
+    try:
+        cli.anim_controller.enable_animations(False)
+        cli.anim_controller.enable_procedural_face(False)
+    except Exception:
+        pass
+
+
 def ativar_sono_ppclip(cli: "pycozmo.Client") -> bool:
     """Sono na base: loop ppclip oficial (Sleep/GoToSleep…) — olhos animados."""
     global _charger_stream_sessao, _charger_keeper_ativo, _sono_oled_texto_ativo
     definir_modo_sono_oled(True)
+    if sono_tela_escura_ativo():
+        apagar_oled_para_sono(cli)
+        return True
     if not sono_oled_usa_texto():
         _sono_oled_texto_ativo = False
     if sono_oled_usa_texto():
@@ -219,6 +248,8 @@ def ativar_sono_ppclip(cli: "pycozmo.Client") -> bool:
 
 def manter_sono_ppclip(cli: "pycozmo.Client") -> None:
     """Garante ppclip sleep ativo — sem flood, enable_animations ligado."""
+    if sono_tela_escura_ativo():
+        return
     if not modo_sono_oled_ativo() or _sono_oled_texto_ativo:
         return
     if keeper_base_ativo() or _charger_worker_vivo():
@@ -417,6 +448,8 @@ def tocar_clip_base_seguro(
         return False
     if not base_oled_usa_charger(cli):
         return False
+    if not _base_oled_anim_loop_ativo():
+        return _iniciar_keeper_clip_oled_base(cli, grupo)
     h = (
         hold_s
         if hold_s is not None
@@ -425,6 +458,9 @@ def tocar_clip_base_seguro(
     segurar_base_oled_loop(h)
     if _exibir_clip_base(cli, grupo, forcar=True):
         return True
+    if _base_oled_ppclip_em_backoff():
+        logger.debug("Base OLED: ppclip %s bloqueado durante backoff", grupo)
+        return False
     try:
         from cozmo_companion.core.anim_base_patch import play_grupo_sem_rodas_na_base
         from cozmo_companion.core.charger import na_base_oled
@@ -518,7 +554,7 @@ def _oled_estatico_demais(
 
 def _oled_anim_vivo(cli: "pycozmo.Client") -> bool:
     """Clip ppclip em execução — olhos se movem mesmo sem trocar grupo."""
-    if not rx_link_ok():
+    if not _oled_tx_permitido(cli):
         return False
     ac = cli.anim_controller
     if ac.playing_animation or ac.playing_audio:
@@ -645,6 +681,8 @@ def pausar_base_oled_para_texto(
     """Para ppclip na base e impede reinício enquanto notif/TTS usa OLED."""
     segurar_base_oled_loop(segundos)
     _parar_loop_clip_base(timeout=2.5)
+    _parar_display_keeper()
+    _parar_oled_keepalive_base()
     if cli is not None:
         try:
             cli.cancel_anim()
@@ -666,9 +704,54 @@ def rx_link_ok() -> bool:
     return _base_rx_link_ok
 
 
+def rx_morto_s() -> float:
+    """Segundos contínuos com RX morto (0 se vivo) — fonte de verdade do tick principal."""
+    return (time.monotonic() - _rx_off_desde) if _rx_off_desde > 0 else 0.0
+
+
+def oled_frame_recente(max_s: float | None = None) -> bool:
+    """True se a base recebeu frame OLED há pouco; não é caso para reset UDP."""
+    if _ultimo_exibir_clip_em <= 0:
+        return False
+    limite = (
+        float(max_s)
+        if max_s is not None
+        else float(os.environ.get("COZMO01_OLED_RECENT_S", "45"))
+    )
+    return time.monotonic() - _ultimo_exibir_clip_em <= limite
+
+
+def _keeper_segura_tx_backpressure() -> bool:
+    """Backpressure: segura frames OLED quando o RX parou de drenar.
+
+    O firmware do Cozmo trava (COZMO 01) quando o buffer de entrada satura. Enviar
+    frames a 2.5 Hz sem o RX acompanhar só engorda o backlog. Ao primeiro sinal de
+    RX morto, paramos de mandar para o firmware esvaziar e o RX voltar sozinho —
+    sem chegar ao reset UDP.
+    """
+    if rx_link_ok():
+        return False
+    limiar = float(os.environ.get("COZMO_BASE_TX_BACKPRESSURE_S", "1.5"))
+    return rx_morto_s() >= limiar
+
+
 def _oled_tx_permitido(cli: "pycozmo.Client") -> bool:
-    """TX ppclip na base — só com RX vivo (ppclip saudável tolera drx=0 via MonitorRx)."""
-    return rx_link_ok()
+    """TX OLED na base.
+
+    RX pode ficar sem drx durante animação/keeper; se a rota do AP ainda existe,
+    manter os frames é mais seguro do que deixar a tela apagar e forçar reset UDP.
+    """
+    if rx_link_ok():
+        return True
+    grace = float(os.environ.get("COZMO_BASE_OLED_TX_RX_STALL_GRACE_S", "180"))
+    if _rx_off_desde <= 0 or time.monotonic() - _rx_off_desde > grace:
+        return False
+    try:
+        from cozmo_companion.core.conexao import cozmo_rota_ap
+
+        return cozmo_rota_ap()
+    except Exception:
+        return False
 
 
 def _oled_sessao_viva(cli: "pycozmo.Client") -> bool:
@@ -701,6 +784,9 @@ def religar_base_oled_pos_notif(cli: "pycozmo.Client") -> None:
     if _clip_loop_vivo():
         return
     if _base_oled_anim_loop_ativo() and _garantir_base_oled_anim_loop(cli):
+        return
+    if base_oled_usa_charger(cli):
+        modo_charger_oled(cli, forcar=True)
         return
     if detectar_cozmo01_suspeito(cli):
         _sequencia_recuperar_cozmo01(cli)
@@ -735,7 +821,7 @@ def vigiar_rodas_na_base(cli: "pycozmo.Client", *, preso: bool) -> None:
 
 
 def cortar_flood_udp_base(cli: "pycozmo.Client") -> None:
-    """RX parado: corta replay/worker — mantém ppclip em modo ping se ativo."""
+    """Corta emissor OLED pesado quando TX acumula ou RX para."""
     global _charger_replay_pendente
     _charger_replay_pendente = False
     ping_sessao_base(cli)
@@ -745,10 +831,31 @@ def cortar_flood_udp_base(cli: "pycozmo.Client") -> None:
         return
     if not rx_link_ok():
         _parar_charger_worker(timeout=1.0)
-        if _base_oled_anim_loop_ativo() and _clip_loop_vivo():
-            pulso_sync_base(cli, forcado=True)
-            return
-        _parar_base_oled_anim_loop(timeout=1.0)
+        if (
+            (_base_oled_anim_loop_ativo() and _clip_loop_vivo())
+            or keeper_base_ativo()
+            or _oled_keepalive_thread is not None
+        ):
+            _pausar_base_oled_anim_loop_por_stall(cli)
+        else:
+            _parar_base_oled_anim_loop(timeout=1.0)
+            _parar_display_keeper()
+            _parar_oled_keepalive_base()
+        pulso_sync_base(cli, forcado=True)
+        return
+    if (keeper_base_ativo() or _charger_keeper_ativo) and not _base_oled_anim_loop_ativo():
+        _refresh_sessao_oled_leve(cli)
+        if not keeper_base_ativo():
+            with _charger_oled_lock:
+                grupo = _charger_oled_nome
+            if grupo:
+                _iniciar_keeper_clip_oled_base(cli, grupo)
+            else:
+                modo_charger_oled(cli, forcar=True)
+        pulso_sync_base(cli, forcado=True)
+        return
+    if _base_oled_anim_loop_ativo():
+        _pausar_base_oled_anim_loop_por_stall(cli)
         pulso_sync_base(cli, forcado=True)
         return
     if _oled_sessao_viva(cli):
@@ -902,6 +1009,8 @@ _CLIP_SONO_LOOP_PREF = (
 def clip_sono_base_oled(cli: "pycozmo.Client") -> bool:
     """Sono na base: clip de dormir no ppclip — OLED continua vivo."""
     global _sono_getin_feito
+    if sono_tela_escura_ativo():
+        return False
     if _sono_oled_texto_ativo or sono_oled_usa_texto():
         return False
     import random
@@ -936,6 +1045,9 @@ def clip_sono_base_oled(cli: "pycozmo.Client") -> bool:
 
 def entrar_sono_base_oled(cli: "pycozmo.Client") -> bool:
     """Ativa modo sono: ppclip sleep (olhos) ou legado zZz se COZMO_SONO_OLED_TEXTO=1."""
+    if os.environ.get("SONO_TELA_ESCURA", "0") == "1":
+        apagar_oled_para_sono(cli)
+        return True
     if sono_oled_usa_texto():
         ativar_sono_oled_texto(cli)
         return True
@@ -945,6 +1057,7 @@ def entrar_sono_base_oled(cli: "pycozmo.Client") -> bool:
 def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bool:
     """Troca o clip na base — pool amplo, anti-repetição, sem mexer nas rodas."""
     global _charger_oled_nome, _ultimo_variar_clip, _ultimos_clips_base
+    global _charger_stream_sessao, _charger_keeper_ativo
     if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
         return False
     if base_oled_loop_segurado():
@@ -1047,10 +1160,18 @@ def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bo
         nome,
         len(ok_pool),
     )
+    if _base_oled_animado_desativado():
+        return _semear_oled_charger(cli, nome)
     if _charger_play_stream(cli) and not _charger_keeper_ativo:
         with _charger_oled_lock:
             _charger_oled_nome = nome
         return _replay_anim_charger(cli, nome)
+    if base_oled_usa_charger(cli) and not _base_oled_anim_loop_ativo():
+        _charger_stream_sessao = True
+        _charger_keeper_ativo = True
+        return _iniciar_keeper_clip_oled_base(cli, nome) or _semear_oled_charger(
+            cli, nome
+        )
     if (
         keeper_base_ativo()
         or _charger_keeper_ativo
@@ -1062,10 +1183,8 @@ def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bo
         if _base_oled_anim_loop_ativo():
             _garantir_base_oled_anim_loop(cli)
             return True
-        return (
-            _iniciar_keeper_clip_oled_base(cli, nome)
-            or _exibir_clip_base(cli, nome)
-            or _semear_oled_charger(cli, nome)
+        return _iniciar_keeper_clip_oled_base(cli, nome) or _semear_oled_charger(
+            cli, nome
         )
     if _charger_worker_vivo():
         return True
@@ -1076,6 +1195,8 @@ def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bo
 
 def tick_espiar_escuro(cli: "pycozmo.Client") -> None:
     """No escuro: de vez em quando rosto normal, depois volta ao sono."""
+    if sono_tela_escura_ativo():
+        return
     global _espiar_escuro_ate, _ultimo_espiar_escuro, _charger_oled_nome
     from cozmo_companion.core.ambiente_escuro import detector_escuro
     from cozmo_companion.core.anims import pool_espiar_escuro_base
@@ -1226,6 +1347,10 @@ def _duracao_clip_base_s() -> float:
 
 
 def _base_oled_anim_loop_ativo() -> bool:
+    if _base_oled_animado_desativado():
+        return False
+    if _base_oled_ppclip_em_backoff():
+        return False
     modo = os.environ.get("COZMO_BASE_OLED_ANIM_LOOP", "auto").strip().lower()
     if modo in ("0", "off", "false", "no"):
         return False
@@ -1236,6 +1361,59 @@ def _base_oled_anim_loop_ativo() -> bool:
             return True
         return os.environ.get("COZMO_BASE_OLED_MODE", "proc") == "proc"
     return False
+
+
+def _base_oled_ppclip_em_backoff() -> bool:
+    return time.monotonic() < _base_oled_anim_loop_pausado_ate
+
+
+def resetar_sessao_oled_base() -> None:
+    """Nova conexão UDP: descarta workers/backoff ligados ao cliente antigo."""
+    global _base_oled_anim_loop_pausado_ate, _charger_keeper_ativo
+    global _charger_stream_sessao, _charger_oled_nome
+    _parar_base_oled_anim_loop(timeout=1.0)
+    _parar_display_keeper()
+    _parar_charger_worker(timeout=0.5)
+    _parar_oled_keepalive_base()
+    _base_oled_anim_loop_pausado_ate = 0.0
+    _charger_keeper_ativo = False
+    _charger_stream_sessao = False
+    with _charger_oled_lock:
+        _charger_oled_nome = None
+    liberar_base_oled_loop_hold(motivo="nova_sessao_udp")
+
+
+def _base_oled_animado_desativado() -> bool:
+    return os.environ.get("COZMO_BASE_OLED_ANIMATED", "1").strip().lower() in (
+        "0",
+        "off",
+        "false",
+        "no",
+    )
+
+
+def _pausar_base_oled_anim_loop_por_stall(cli: "pycozmo.Client") -> None:
+    """ppclip sem ACK derruba RX; cai para keeper leve antes de tentar de novo."""
+    global _base_oled_anim_loop_pausado_ate, _charger_keeper_ativo
+    pausa = float(os.environ.get("COZMO_BASE_OLED_LOOP_BACKOFF_S", "240"))
+    _base_oled_anim_loop_pausado_ate = max(
+        _base_oled_anim_loop_pausado_ate,
+        time.monotonic() + max(15.0, pausa),
+    )
+    _parar_base_oled_anim_loop(timeout=1.0)
+    _parar_display_keeper()
+    _parar_oled_keepalive_base()
+    # Keeper parado nao pode continuar marcado como ativo, senao o keepalive
+    # de backoff sai imediatamente e a OLED fica sem emissor.
+    _charger_keeper_ativo = False
+    try:
+        iniciar_oled_keepalive_base(cli, durante_backoff=True)
+    except Exception:
+        pass
+    logger.warning(
+        "Base OLED: ppclip pausado %.0fs após stall RX; usando keeper leve",
+        max(15.0, pausa),
+    )
 
 
 def ppclip_base_ativo(cli: "pycozmo.Client") -> bool:
@@ -1288,8 +1466,9 @@ def _base_anim_loop_vivo() -> bool:
 
 
 def _parar_loop_clip_base(timeout: float = 2.0) -> None:
-    global _clip_loop_thread
+    global _clip_loop_thread, _clip_loop_generation
     _clip_loop_stop.set()
+    _clip_loop_generation += 1
     th = _clip_loop_thread
     _clip_loop_thread = None
     if th and th.is_alive() and threading.current_thread() is not th:
@@ -1303,10 +1482,21 @@ def _parar_base_oled_anim_loop(timeout: float = 2.0) -> None:
 
 def _keeper_clip_hz(cli: "pycozmo.Client") -> float:
     if base_oled_carga_cheia_ativo(cli):
-        hz = float(os.environ.get("COZMO_BASE_FULL_KEEPER_HZ", "7"))
+        hz = float(os.environ.get("COZMO_BASE_FULL_KEEPER_HZ", "4"))
     else:
-        hz = float(os.environ.get("COZMO_CHARGER_OLED_HZ", "2.5"))
-    return max(2.0, min(12.0, hz))
+        hz = float(os.environ.get("COZMO_CHARGER_OLED_HZ", "4"))
+    return max(0.05, min(6.0, hz))
+
+
+def _passo_frames_keeper(hz: float) -> int:
+    """Mantém a duração do clip original ao reproduzi-lo em baixa frequência.
+
+    Os clips do firmware trazem imagens em aproximadamente 30 fps. Enviar todas
+    a 4 Hz transforma uma expressão de poucos segundos em câmera lenta de vários
+    minutos. O keeper economiza tráfego, mas avança a linha do tempo original.
+    """
+    fps_origem = max(1.0, float(os.environ.get("COZMO_ANIM_SOURCE_FPS", "30")))
+    return max(1, int(round(fps_origem / max(0.05, hz))))
 
 
 def _iniciar_keeper_clip_oled_base(cli: "pycozmo.Client", grupo: str, *, hz: float | None = None) -> bool:
@@ -1319,10 +1509,15 @@ def _iniciar_keeper_clip_oled_base(cli: "pycozmo.Client", grupo: str, *, hz: flo
         return _garantir_base_oled_anim_loop(cli)
     if not grupo:
         return False
+    if _base_oled_animado_desativado():
+        return _semear_oled_charger(cli, grupo)
+    _desligar_anim_controller_base(cli)
     rate = hz if hz is not None else _keeper_clip_hz(cli)
     frames = _frames_clip_oled(cli, grupo)
     if len(frames) < 2:
-        return _exibir_clip_base(cli, grupo, forcar=True) or _semear_oled_charger(cli, grupo)
+        return _semear_oled_charger(cli, grupo)
+    if _base_oled_ppclip_em_backoff():
+        return _semear_oled_charger(cli, grupo)
     _parar_oled_keepalive_base()
     _iniciar_display_keeper(cli, rate, grupo=grupo)
     return True
@@ -1336,8 +1531,9 @@ def _intervalo_variar_base_s() -> float:
         return max(22.0, centro + random.uniform(-jitter, jitter))
     centro = float(os.environ.get("COZMO_BASE_VARIAR_S", "32"))
     jitter = float(os.environ.get("COZMO_BASE_VARIAR_JITTER_S", "8"))
+    teto = float(os.environ.get("COZMO_BASE_VARIAR_MAX_S", "55"))
     intervalo = random.uniform(centro - jitter, centro + jitter)
-    intervalo = max(18.0, min(55.0, intervalo))
+    intervalo = max(18.0, min(teto, intervalo))
     return max(18.0, min(intervalo, _oled_max_estatico_s()))
 
 
@@ -1346,22 +1542,30 @@ def _aguardar_fim_clip_loop(
     grupo: str,
     *,
     max_s: float | None = None,
+    geracao: int | None = None,
 ) -> None:
-    """Espera duração do clip (ou max_s) + drenagem da fila (máx 20s)."""
+    """Espera o clip terminar sem congelar o último frame entre repetições.
+
+    ``max_s`` é um teto de segurança, não um tempo mínimo de hold. Usá-lo
+    como piso deixava um clip de 1–3 s parado por até 90 s na base.
+    """
     ac = cli.anim_controller
     limite = _duracao_grupo_s(cli, grupo)
     if max_s is not None:
-        # Clip curto: espera pelo menos COZMO_BASE_VARIAR_S — evita flood "variar clip".
-        limite = max(limite, max(4.0, max_s))
+        limite = min(limite, max(0.5, max_s))
     fim = time.monotonic() + limite
     while time.monotonic() < fim:
-        if _clip_loop_stop.is_set():
+        if _clip_loop_stop.is_set() or (
+            geracao is not None and geracao != _clip_loop_generation
+        ):
             return
         if _clip_loop_stop.wait(0.2):
             return
     drain_fim = time.monotonic() + min(8.0, float(os.environ.get("COZMO_BASE_CLIP_DRAIN_S", "4")))
     while time.monotonic() < drain_fim:
-        if _clip_loop_stop.is_set():
+        if _clip_loop_stop.is_set() or (
+            geracao is not None and geracao != _clip_loop_generation
+        ):
             return
         if ac.queue.is_empty():
             return
@@ -1369,10 +1573,14 @@ def _aguardar_fim_clip_loop(
             return
 
 
-def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
+def _clip_loop_cancelado(geracao: int) -> bool:
+    return _clip_loop_stop.is_set() or geracao != _clip_loop_generation
+
+
+def _loop_clip_base_continuo(cli: "pycozmo.Client", geracao: int) -> None:
     """Base na carga: ppclip oficial em sequência — sem keepalive estático."""
     global _charger_oled_nome
-    while not _clip_loop_stop.is_set():
+    while not _clip_loop_cancelado(geracao):
         if _sono_oled_texto_ativo or (modo_sono_oled_ativo() and sono_oled_usa_texto()):
             if _clip_loop_stop.wait(0.5):
                 return
@@ -1446,6 +1654,7 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
                     cli,
                     g,
                     max_s=min(clip_loop_hold, _oled_max_estatico_s()),
+                    geracao=geracao,
                 )
                 continue
             _exibir_clip_base(cli, g, forcar=modo_sono_oled_ativo())
@@ -1457,6 +1666,7 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
                 cli,
                 g,
                 max_s=min(clip_loop_hold, _oled_max_estatico_s()),
+                geracao=geracao,
             )
             if modo_sono_oled_ativo():
                 from cozmo_companion.core.anims import pool_sono_oled_base
@@ -1502,7 +1712,9 @@ def _loop_clip_base_continuo(cli: "pycozmo.Client") -> None:
 
 
 def iniciar_loop_clip_base(cli: "pycozmo.Client") -> bool:
-    global _charger_stream_sessao, _charger_keeper_ativo
+    global _charger_stream_sessao, _charger_keeper_ativo, _clip_loop_generation
+    if sono_tela_escura_ativo():
+        return False
     if not rx_link_ok():
         return False
     if _sono_oled_texto_ativo:
@@ -1524,10 +1736,12 @@ def iniciar_loop_clip_base(cli: "pycozmo.Client") -> bool:
         _parar_oled_keepalive_base()
         _parar_charger_worker(timeout=0.5)
         _clip_loop_stop.clear()
+        _clip_loop_generation += 1
+        geracao = _clip_loop_generation
         global _clip_loop_thread
         _clip_loop_thread = threading.Thread(
             target=_loop_clip_base_continuo,
-            args=(cli,),
+            args=(cli, geracao),
             daemon=True,
             name="BaseOledClipLoop",
         )
@@ -1691,7 +1905,7 @@ def _replay_anim_charger(cli: "pycozmo.Client", nome: str | None) -> bool:
     if keeper_base_ativo() or (
         not _charger_play_stream(cli) and base_oled_carga_cheia_ativo(cli)
     ):
-        return _exibir_clip_base(cli, nome) or _semear_oled_charger(cli, nome)
+        return _iniciar_keeper_clip_oled_base(cli, nome) or _semear_oled_charger(cli, nome)
     if _charger_play_stream(cli) and not _charger_keeper_ativo:
         with _charger_oled_lock:
             global _charger_oled_nome
@@ -1850,6 +2064,7 @@ def _ppclip_grupo(cli: "pycozmo.Client", grupo: str):
     """PreprocessedClip do grupo — na base usa clip sem keyframes de roda."""
     from cozmo_companion.core.anim_base_patch import (
         obter_ppclip_sem_rodas,
+        ppclip_total_frames_oled,
         _na_base_anim,
     )
     from cozmo_companion.core.charger import na_base_oled
@@ -1862,10 +2077,14 @@ def _ppclip_grupo(cli: "pycozmo.Client", grupo: str):
     if not meta:
         return None
     if na_base_oled(cli) or _na_base_anim(cli):
-        try:
-            return obter_ppclip_sem_rodas(cli, anim_name)
-        except ValueError:
-            return None
+        melhores = []
+        for membro in ag.members:
+            try:
+                pp = obter_ppclip_sem_rodas(cli, membro.name)
+            except (KeyError, ValueError):
+                continue
+            melhores.append((ppclip_total_frames_oled(pp), pp))
+        return max(melhores, key=lambda item: item[0])[1] if melhores else None
     from pycozmo import anim as pycozmo_anim
 
     if anim_name not in cli._ppclips:
@@ -1936,6 +2155,8 @@ def _exibir_clip_base(
     """Caminho Anki oficial: StartAnimation + play_anim_ppclip (sem rodas)."""
     global _ultimo_exibir_clip_grupo, _ultimo_exibir_clip_em, _ultimo_charger_play
     global _charger_oled_nome
+    if sono_tela_escura_ativo():
+        return False
     if modo_sono_oled_ativo() and not _sono_oled_texto_ativo:
         if not _clip_e_sono_oled(cli, grupo):
             clip_sono_base_oled(cli)
@@ -1990,6 +2211,21 @@ def _exibir_clip_base(
         with _charger_oled_lock:
             _charger_oled_nome = grupo
         return iniciar_loop_clip_base(cli)
+    if (
+        base_oled_usa_charger(cli)
+        and not _base_oled_anim_loop_ativo()
+        and _charger_keeper_ativo
+        and not recuperacao
+    ):
+        return _iniciar_keeper_clip_oled_base(cli, grupo) or _semear_oled_charger(
+            cli, grupo
+        )
+    if _base_oled_animado_desativado() and not recuperacao:
+        logger.debug("Base OLED: clip %s sem animação oficial", grupo)
+        return _semear_oled_charger(cli, grupo)
+    if _base_oled_ppclip_em_backoff() and not recuperacao:
+        logger.debug("Base OLED: clip %s sem ppclip durante backoff", grupo)
+        return _semear_oled_charger(cli, grupo)
     n = len(_frames_clip_oled(cli, grupo))
     min_n = max(2, int(os.environ.get("COZMO_BASE_OLED_MIN_FRAMES", "8")))
     if n < min_n:
@@ -2097,10 +2333,12 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
     if _base_oled_anim_loop_ativo():
         return
     hz = float(os.environ.get("COZMO_BASE_OLED_KEEPALIVE_HZ", "5"))
-    interval = 1.0 / max(2.0, min(8.0, hz))
+    interval = 1.0 / max(0.05, min(4.0, hz))
     ac = cli.anim_controller
     n_log = 0
     while not _oled_keepalive_stop.is_set():
+        if keeper_base_ativo() or _charger_keeper_ativo:
+            break
         if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
             if _oled_keepalive_stop.wait(interval):
                 break
@@ -2114,9 +2352,7 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
                 break
             continue
         try:
-            if not ac.animations_enabled:
-                ac.enable_animations(True)
-                _garantir_thread_anim(cli)
+            _desligar_anim_controller_base(cli)
             pkt = ac.last_image_pkt
             if _imagem_vazia(pkt):
                 with _charger_oled_lock:
@@ -2125,7 +2361,6 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
                 _semear_oled_charger(cli, grupo)
             else:
                 _handshake_frame_oled(cli)
-                cli.conn.send(protocol_encoder.EnableAnimationState())
                 cli.conn.send(pkt)
             n_log += 1
             if n_log == 1 or n_log % max(1, int(hz * 25)) == 0:
@@ -2142,9 +2377,23 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
             break
 
 
-def iniciar_oled_keepalive_base(cli: "pycozmo.Client") -> None:
-    global _oled_keepalive_thread
+def iniciar_oled_keepalive_base(
+    cli: "pycozmo.Client", *, durante_backoff: bool = False
+) -> None:
+    global _oled_keepalive_thread, _charger_keeper_ativo
+    if keeper_base_ativo():
+        return
+    if _charger_keeper_ativo:
+        if not durante_backoff:
+            return
+        _charger_keeper_ativo = False
+    if keeper_base_ativo() or _charger_keeper_ativo:
+        return
     if _base_oled_anim_loop_ativo():
+        return
+    if _base_oled_animado_desativado():
+        return
+    if _base_oled_ppclip_em_backoff() and not durante_backoff:
         return
     if os.environ.get("COZMO_BASE_OLED_KEEPALIVE", "1") != "1":
         return
@@ -2179,6 +2428,7 @@ def _frames_clip_oled(
 
 
 def _semear_oled_charger(cli: "pycozmo.Client", grupo: str | None) -> bool:
+    global _ultimo_exibir_clip_em, _ultimo_exibir_clip_grupo
     from cozmo_companion.display.rosto import pkt_rosto_procedural
 
     ac = cli.anim_controller
@@ -2195,10 +2445,19 @@ def _semear_oled_charger(cli: "pycozmo.Client", grupo: str | None) -> bool:
         _handshake_frame_oled(cli, force=True)
         enviar_oled(cli, pkt)
         ac.last_image_pkt = pkt
-        ac.enable_animations(True)
-        _garantir_thread_anim(cli)
+        _ultimo_exibir_clip_em = time.monotonic()
+        _ultimo_exibir_clip_grupo = grupo or ""
+        if _base_oled_anim_loop_ativo():
+            ac.enable_animations(True)
+            _garantir_thread_anim(cli)
         if _base_oled_anim_loop_ativo():
             _garantir_base_oled_anim_loop(cli)
+        elif _base_oled_animado_desativado():
+            pass
+        elif _base_oled_ppclip_em_backoff():
+            pass
+        elif keeper_base_ativo() or _charger_keeper_ativo:
+            pass
         else:
             iniciar_oled_keepalive_base(cli)
         return True
@@ -2408,7 +2667,10 @@ def _tick_charger_oled(cli: "pycozmo.Client") -> bool:
         return False
     if not base_oled_usa_charger(cli):
         return False
+    if _base_oled_animado_desativado():
+        return _manter_charger_handshake(cli)
     if keeper_base_ativo() and base_oled_carga_cheia_ativo(cli):
+        _desligar_anim_controller_base(cli)
         _refresh_sessao_oled_leve(cli)
         return True
     if base_oled_usa_proc_vivo(cli):
@@ -2423,6 +2685,7 @@ def _tick_charger_oled(cli: "pycozmo.Client") -> bool:
             _garantir_charger_worker(cli)
         return True
     if _charger_keeper_ativo:
+        _desligar_anim_controller_base(cli)
         if _base_oled_anim_loop_ativo():
             _garantir_base_oled_anim_loop(cli)
             _refresh_sessao_oled_leve(cli)
@@ -2430,15 +2693,9 @@ def _tick_charger_oled(cli: "pycozmo.Client") -> bool:
         with _charger_oled_lock:
             grupo = _charger_oled_nome
         _refresh_sessao_oled_leve(cli)
-        ac = cli.anim_controller
-        pkt = ac.last_image_pkt
-        if _imagem_vazia(pkt):
-            return _semear_oled_charger(cli, grupo)
-        try:
-            cli.conn.send(pkt)
-            return True
-        except Exception:
-            return _semear_oled_charger(cli, grupo)
+        if grupo and not keeper_base_ativo() and not _base_oled_ppclip_em_backoff():
+            return _iniciar_keeper_clip_oled_base(cli, grupo)
+        return True
     ac = cli.anim_controller
     if ac.playing_animation or ac.playing_audio:
         return _manter_charger_handshake(cli)
@@ -2471,7 +2728,7 @@ def processar_replay_charger_pendente(cli: "pycozmo.Client") -> bool:
 
 def _loop_charger_oled(cli: "pycozmo.Client") -> None:
     hz = float(os.environ.get("COZMO_CHARGER_OLED_HZ", "1.5"))
-    intervalo = 1.0 / max(0.5, min(4.0, hz))
+    intervalo = 1.0 / max(0.05, min(4.0, hz))
     replay_s = float(os.environ.get("COZMO_CHARGER_REPLAY_S", "18"))
     ultimo_replay = 0.0
     while not _charger_loop_stop.wait(intervalo):
@@ -2638,19 +2895,22 @@ def _ativar_oled_keeper_vivo(cli: "pycozmo.Client", agora: float) -> bool:
     clip = grupo or idle_fixo
     _parar_oled_keepalive_base()
     if _base_oled_anim_loop_ativo():
-        iniciar_loop_clip_base(cli)
-        ok = _exibir_clip_base(cli, clip, forcar=True)
+        ok = _garantir_base_oled_anim_loop(cli)
         if not ok:
             _semear_oled_charger(cli, clip)
+        modo = "loop ppclip"
     else:
+        _desligar_anim_controller_base(cli)
         iniciar_loop_charger(cli)
-        ok = _exibir_clip_base(cli, clip)
+        ok = _iniciar_keeper_clip_oled_base(cli, clip)
         if not ok:
             _semear_oled_charger(cli, clip)
+        modo = "keeper frames"
     logger.info(
-        "Base OLED: vivo %s (pool=%d, clip oficial)",
+        "Base OLED: vivo %s (pool=%d, %s)",
         grupo or idle_fixo,
         len(pool),
+        modo,
     )
     return True
 
@@ -2972,30 +3232,50 @@ def _keeper_pausa_anim_audio(ac) -> bool:
 
 
 def _parar_display_keeper() -> None:
-    global _display_thread
+    global _display_thread, _display_generation, _display_keeper_grupo, _display_keeper_hz
     _display_stop.set()
+    _display_generation += 1
+    _display_keeper_grupo = None
+    _display_keeper_hz = 0.0
     cur = threading.current_thread()
     with _display_lock:
         th = _display_thread
         _display_thread = None
     if th and th.is_alive() and cur is not th:
         th.join(timeout=2.0)
-    _display_stop.clear()
+    if not (th and th.is_alive()):
+        _display_stop.clear()
 
 
-def _loop_display_keeper(cli: "pycozmo.Client", hz: float) -> None:
+def _display_keeper_cancelado(geracao: int) -> bool:
+    return _display_stop.is_set() or geracao != _display_generation
+
+
+def _loop_display_keeper(cli: "pycozmo.Client", hz: float, geracao: int) -> None:
     from cozmo_companion.display.rosto import pkt_rosto_procedural
 
     interval = 1.0 / hz
     ac = cli.anim_controller
     frame_n = 0
-    while not _display_stop.is_set():
+    while not _display_keeper_cancelado(geracao):
+        if (
+            _base_oled_animado_desativado()
+            or _base_oled_ppclip_em_backoff()
+            or not _oled_tx_permitido(cli)
+        ):
+            if _display_stop.wait(interval):
+                break
+            continue
         if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
             if _display_stop.wait(interval):
                 break
             continue
         if _keeper_pausa_anim_audio(ac):
             if _display_stop.wait(0.08):
+                break
+            continue
+        if _keeper_segura_tx_backpressure():
+            if _display_stop.wait(interval):
                 break
             continue
         try:
@@ -3013,7 +3293,7 @@ def _loop_display_keeper(cli: "pycozmo.Client", hz: float) -> None:
 
 
 def _loop_display_clip_keeper(
-    cli: "pycozmo.Client", grupo: str, hz: float
+    cli: "pycozmo.Client", grupo: str, hz: float, geracao: int
 ) -> None:
     """Reproduz frames OLED do clip oficial — rosto Anki na base 100%%."""
     from cozmo_companion.display.rosto import pkt_rosto_procedural
@@ -3022,15 +3302,28 @@ def _loop_display_clip_keeper(
     interval = 1.0 / hz
     ac = cli.anim_controller
     idx = 0
+    passo = _passo_frames_keeper(hz)
     frame_n = 0
     ultimo_log = time.monotonic()
-    while not _display_stop.is_set():
+    while not _display_keeper_cancelado(geracao):
+        if (
+            _base_oled_animado_desativado()
+            or _base_oled_ppclip_em_backoff()
+            or not _oled_tx_permitido(cli)
+        ):
+            if _display_stop.wait(interval):
+                break
+            continue
         if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
             if _display_stop.wait(interval):
                 break
             continue
         if _keeper_pausa_anim_audio(ac):
             if _display_stop.wait(0.08):
+                break
+            continue
+        if _keeper_segura_tx_backpressure():
+            if _display_stop.wait(interval):
                 break
             continue
         try:
@@ -3041,7 +3334,7 @@ def _loop_display_clip_keeper(
                 cli.conn.send(protocol_encoder.EnableAnimationState())
             if frames:
                 pkt = frames[idx % len(frames)]
-                idx += 1
+                idx += passo
             else:
                 pkt = pkt_rosto_procedural(cli)
             enviar_oled(cli, pkt)
@@ -3067,11 +3360,25 @@ def _loop_display_clip_keeper(
 def _iniciar_display_keeper(
     cli: "pycozmo.Client", hz: float, *, grupo: str | None = None
 ) -> None:
-    global _display_thread
+    global _display_thread, _display_generation, _display_keeper_grupo, _display_keeper_hz
     if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
         return
     if _base_oled_anim_loop_ativo():
         _garantir_base_oled_anim_loop(cli)
+        return
+    if _base_oled_animado_desativado():
+        return
+    if _base_oled_ppclip_em_backoff():
+        return
+    with _display_lock:
+        th = _display_thread
+        mesmo_keeper = (
+            th is not None
+            and th.is_alive()
+            and _display_keeper_grupo == grupo
+            and abs(_display_keeper_hz - hz) < 0.01
+        )
+    if mesmo_keeper:
         return
     _parar_display_keeper()
     instalar_guard_anim_base(cli)
@@ -3082,16 +3389,20 @@ def _iniciar_display_keeper(
     if ac.thread and ac.thread.is_alive():
         _parar_thread_anim(cli)
     _display_stop.clear()
+    _display_generation += 1
+    geracao = _display_generation
     frames = _frames_clip_oled(cli, grupo) if grupo else ()
     if grupo and frames:
         target = _loop_display_clip_keeper
-        args: tuple = (cli, grupo, hz)
+        args: tuple = (cli, grupo, hz, geracao)
         modo_log = f"clip {grupo} ({len(frames)} frames)"
     else:
         target = _loop_display_keeper
-        args = (cli, hz)
+        args = (cli, hz, geracao)
         modo_log = "procedural"
     with _display_lock:
+        _display_keeper_grupo = grupo
+        _display_keeper_hz = hz
         _display_thread = threading.Thread(
             target=target,
             args=args,
@@ -3391,6 +3702,29 @@ def _parar_thread_anim(cli: "pycozmo.Client") -> None:
         ac.stop_flag = False
 
 
+def _desligar_anim_controller_base(cli: "pycozmo.Client") -> None:
+    """Garante que keeper/frames leves na base não deixam fluxo 30fps vivo."""
+    ac = cli.anim_controller
+    try:
+        ac.enable_procedural_face(False)
+    except Exception:
+        pass
+    try:
+        ac.enable_animations(False)
+    except Exception:
+        pass
+    try:
+        ac.queue.clear()
+    except Exception:
+        pass
+    try:
+        th = getattr(ac, "thread", None)
+        if th and getattr(th, "is_alive", lambda: False)() is True:
+            _parar_thread_anim(cli)
+    except Exception:
+        pass
+
+
 def _garantir_thread_anim(cli: "pycozmo.Client") -> None:
     ac = cli.anim_controller
     if not ac.thread or not ac.thread.is_alive():
@@ -3401,6 +3735,7 @@ def _garantir_thread_anim(cli: "pycozmo.Client") -> None:
 def parar_flood_anim(cli: "pycozmo.Client") -> None:
     """Para loop 30fps — pulse, direct, keeper ou OLED mínimo na base."""
     if keeper_base_ativo() and base_oled_carga_cheia_ativo(cli):
+        _desligar_anim_controller_base(cli)
         return
     if base_oled_usa_proc_vivo(cli):
         ac = cli.anim_controller
@@ -3418,6 +3753,7 @@ def parar_flood_anim(cli: "pycozmo.Client") -> None:
             or os.environ.get("COZMO_BASE_KEEPER_VIVO", "0") == "1"
             or (_base_oled_anim_loop_ativo() and _base_anim_loop_vivo())
         ):
+            _desligar_anim_controller_base(cli)
             return
         _parar_display_keeper()
         ac = cli.anim_controller
@@ -3656,6 +3992,8 @@ def detectar_cozmo01_suspeito(cli: "pycozmo.Client") -> bool:
     if not cozmo_alcanavel():
         return False
     if not rx_link_ok():
+        if _oled_tx_permitido(cli) and oled_frame_recente():
+            return False
         dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
         if _rx_off_desde > 0 and time.monotonic() - _rx_off_desde >= dead_s:
             return True
@@ -3663,6 +4001,8 @@ def detectar_cozmo01_suspeito(cli: "pycozmo.Client") -> bool:
     if base_oled_loop_segurado():
         return False
     if not base_oled_usa_charger(cli) and not base_oled_carga_cheia_ativo(cli):
+        return False
+    if _base_oled_animado_desativado():
         return False
     if _ultimo_exibir_clip_em <= 0:
         return False
@@ -3782,6 +4122,9 @@ def recuperar_cozmo01_auto(
         return False
     _ultimo_recuperar_cozmo01 = agora
     _sequencia_recuperar_cozmo01(cli)
+    ok = rx_link_ok()
+    if not ok:
+        return False
     try:
         monitor.sincronizar(cli)  # type: ignore[union-attr]
     except Exception:
@@ -3791,7 +4134,7 @@ def recuperar_cozmo01_auto(
             medidor.reset()  # type: ignore[union-attr]
         except Exception:
             pass
-    return rx_link_ok()
+    return True
 
 
 def religar_oled_acordado_base(cli: "pycozmo.Client", *, forcar: bool = False) -> bool:
@@ -4093,20 +4436,18 @@ def enviar_audio_fila(
                 time.sleep(max(FRAME_S * 2, 0.05))
                 return
             if base_oled_usa_charger(cli):
-                ac.enable_animations(True)
-                _garantir_thread_anim(cli)
+                _desligar_anim_controller_base(cli)
                 try:
-                    ac.play_audio([pkt])
+                    cli.conn.send(pkt)
                 except Exception:
-                    try:
-                        cli.conn.send(pkt)
-                    except Exception:
-                        pass
+                    pass
                 time.sleep(max(FRAME_S * 2, 0.05))
                 with _charger_oled_lock:
                     grupo = _charger_oled_nome
                 if grupo:
-                    if _charger_play_stream(cli):
+                    if _charger_play_stream(cli) and not (
+                        keeper_base_ativo() or _charger_keeper_ativo
+                    ):
                         _replay_anim_charger(cli, grupo)
                     else:
                         _semear_oled_charger(cli, grupo)
@@ -4176,8 +4517,22 @@ def animar_grupo(
             modo_base_olhos(cli)
             return False
         if base_oled_usa_charger(cli):
+            if _base_oled_animado_desativado():
+                ok = _semear_oled_charger(cli, nome)
+                logger.debug("Anim base estática: %s", nome)
+                return ok
+            if _base_oled_ppclip_em_backoff():
+                if _iniciar_keeper_clip_oled_base(cli, nome):
+                    logger.debug("Anim base keeper: %s", nome)
+                    return True
+                return modo_charger_oled(cli, forcar=False)
             if nome in ("IdleOnCharger", "IdleOnChargerCharging"):
                 return modo_charger_oled(cli, forcar=True)
+            if not _base_oled_anim_loop_ativo() or _charger_keeper_ativo or _charger_usa_keeper(cli):
+                if _iniciar_keeper_clip_oled_base(cli, nome):
+                    logger.debug("Anim base keeper: %s", nome)
+                    return True
+                return modo_charger_oled(cli, forcar=False)
             if tocar_clip_base_seguro(cli, nome):
                 logger.info("Anim base ppclip: %s", nome)
                 return True

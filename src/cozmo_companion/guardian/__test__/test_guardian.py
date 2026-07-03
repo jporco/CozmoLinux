@@ -79,6 +79,24 @@ class TestHealth(unittest.TestCase):
                     s = ler_log(log)
             self.assertEqual(s.erros_recentes, 0)
 
+    def test_heartbeat_oled_renova_idade_da_sessao(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "log"
+            log.write_text(
+                f"{_ts(-380)},000 cozmo.conexao INFO "
+                "Sessão Cozmo: estado=CONNECTED ping=OK 4.24V status=0x3310 "
+                "udp rx=719 tx=770 desc=0 ratio=1.1\n"
+                f"{_ts(-10)},000 cozmo.motor INFO "
+                "Base OLED keeper TX: CodeLabHiccup frame 0/32 (2.5 Hz)\n",
+                encoding="utf-8",
+            )
+            with patch("cozmo_companion.guardian.core.health.servico_ativo", return_value=True):
+                with patch("cozmo_companion.guardian.core.health.ping_robo", return_value=False):
+                    s = ler_log(log)
+            self.assertIsNotNone(s.sessao)
+            assert s.sessao is not None
+            self.assertLess(s.sessao.idade_s, 30.0)
+
 
 class TestManutencao(unittest.TestCase):
     def test_trim_respeita_intervalo(self) -> None:
@@ -117,6 +135,34 @@ class TestManutencao(unittest.TestCase):
 
 
 class TestPolicy(unittest.TestCase):
+    def test_reinicia_servico_ativo_com_health_json_estagnado(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data").mkdir()
+            velho = datetime.fromtimestamp(time.time() - 600).isoformat(timespec="seconds")
+            (root / "data" / "cozmo-saude.json").write_text(
+                '{"ts": "' + velho + '"}', encoding="utf-8"
+            )
+            saude = Saude(True, True, None, 0, None, True, True)
+            estado = EstadoGuardian()
+            estado.iniciado_em = time.monotonic() - 300
+            with patch.dict("os.environ", {"GUARDIAN_HEALTH_STALE_S": "240"}):
+                acao = decidir(saude, estado, root=root)
+            self.assertEqual(acao, AcaoGuardian.REINICIAR_TRAVADO)
+
+    def test_boot_grace_nao_reinicia_por_json_do_boot_anterior(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data").mkdir()
+            velho = datetime.fromtimestamp(time.time() - 3600).isoformat(timespec="seconds")
+            (root / "data" / "cozmo-saude.json").write_text(
+                '{"ts": "' + velho + '"}', encoding="utf-8"
+            )
+            saude = Saude(True, True, None, 0, None, True, True)
+            with patch.dict("os.environ", {"GUARDIAN_BOOT_GRACE_S": "180"}):
+                acao = decidir(saude, EstadoGuardian(), root=root)
+            self.assertEqual(acao, AcaoGuardian.NADA)
+
     def test_reinicia_so_apos_morto_longo(self) -> None:
         estado = EstadoGuardian()
         estado.servico_off_desde = time.monotonic() - 250.0
@@ -131,7 +177,21 @@ class TestPolicy(unittest.TestCase):
         acao = decidir(saude, estado, root=Path("/tmp"))
         self.assertEqual(acao, AcaoGuardian.NADA)
 
-    def test_sessao_fresh_bloqueia_wifi(self) -> None:
+    def test_sessao_fresh_com_ping_ok_bloqueia_wifi(self) -> None:
+        estado = EstadoGuardian()
+        saude = Saude(
+            True,
+            True,
+            SessaoLog("CONNECTED", "OK", 4.0, 500, 600, 1.1, "", 30.0),
+            0,
+            None,
+            None,
+            None,
+        )
+        acao = decidir(saude, estado, root=Path("/tmp"))
+        self.assertEqual(acao, AcaoGuardian.NADA)
+
+    def test_sessao_fresh_com_ping_fail_mantem_udp(self) -> None:
         estado = EstadoGuardian()
         saude = Saude(
             True,
@@ -142,7 +202,11 @@ class TestPolicy(unittest.TestCase):
             None,
             None,
         )
-        acao = decidir(saude, estado, root=Path("/tmp"))
+        with patch(
+            "cozmo_companion.core.conexao.cozmo_ssid_visivel",
+            return_value=True,
+        ):
+            acao = decidir(saude, estado, root=Path("/tmp"))
         self.assertEqual(acao, AcaoGuardian.NADA)
 
     def test_wifi_sem_reiniciar_quando_ping_falha(self) -> None:

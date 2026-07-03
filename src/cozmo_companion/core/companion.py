@@ -40,6 +40,7 @@ from cozmo_companion.core.conexao import (
     aguardar_ping,
     aguardar_robot,
     cozmo_alcanavel,
+    cozmo_rota_ap,
     despertar_sessao_leve,
     diagnostico,
     fechar_cliente,
@@ -116,20 +117,17 @@ class Companion(CompanionVoz):
         self._explorador = ExploradorMesa(self._mesa)
         self._pet_livre = PetLivre()
         self._face = FaceWatch(cli)
-        from cozmo_companion.core.ambiente_escuro import (
-            aplicar_acordado_por_luz,
-            aplicar_sono_por_escuro,
-            detector_escuro,
-        )
+        from cozmo_companion.core.ambiente_escuro import detector_escuro
 
         self._detector_escuro = detector_escuro()
         self._face.vincular_detector_luz(self._detector_escuro)
-        self._detector_escuro.registrar_callbacks(
-            on_escuro=lambda: aplicar_sono_por_escuro(cli),
-            on_claro=lambda: aplicar_acordado_por_luz(cli),
-        )
         self._perf = MonitorJogo()
         self._vida = CicloVida(self.tela, self._face, lambda c: self._tocar_grupo(c))
+        self._sono_por_escuro = False
+        self._detector_escuro.registrar_callbacks(
+            on_escuro=self._on_ambiente_escuro,
+            on_claro=self._on_ambiente_claro,
+        )
         self._motores = MotorWatchdog()
         self._gov = GovernadorCozmo()
         self._monitor_rx = MonitorRx()
@@ -142,6 +140,8 @@ class Companion(CompanionVoz):
         self._ultimo_despertar_base = 0.0
         self._ultimo_saude_json = 0.0
         self._ultimo_reconnect_udp = 0.0
+
+        self._rx_stall_desde = 0.0
         self._ultimo_recuperacao = 0.0
         self._falhas_inplace = 0
         self._ultimo_anim_udp = 0.0
@@ -161,6 +161,7 @@ class Companion(CompanionVoz):
         self._ultimo_manter_rosto = 0.0
         self._anim_base_ate = 0.0
         self._ultimo_perception_anim = 0.0
+        self._perception_pendente: AnimIntent | None = None
         self._anim_hist: list[str] = []
         self._recuperador = RecuperadorCozmo01()
         self._ultimo_inplace_proativo = 0.0
@@ -185,6 +186,28 @@ class Companion(CompanionVoz):
             )
         )
         self._face.vincular_eventos(self._on_perception_event)
+
+    def _on_ambiente_escuro(self) -> None:
+        """Pouca luz entra em sono real; não apenas troca o desenho dos olhos."""
+        if not self._na_base_efetivo():
+            return
+        if os.environ.get("COZMO_SONO_NA_BASE", "0") != "1":
+            return
+        self._sono_por_escuro = True
+        if not self._vida.dormindo:
+            logger.info("Ambiente escuro confirmado — entrando em animação de sono")
+            self._vida.cochilar(self.cli, preso_na_base=True)
+        else:
+            # Nunca apaga o OLED: reforça o ppclip de olhos dormindo.
+            self._vida.cochilar(self.cli, preso_na_base=True)
+
+    def _on_ambiente_claro(self) -> None:
+        """A luz voltar acorda somente o sono iniciado pelo ambiente."""
+        if not self._sono_por_escuro:
+            return
+        self._sono_por_escuro = False
+        logger.info("Ambiente claro confirmado — acordando")
+        self._vida.despertar(self.cli, motivo="luz", preso_na_base=True)
 
     # ── estado base ──
 
@@ -265,11 +288,16 @@ class Companion(CompanionVoz):
         cooldown = float(os.environ.get("PERCEPTION_ANIM_COOLDOWN_S", "18"))
         if agora - self._ultimo_perception_anim < cooldown:
             return
-        intent = (
-            AnimIntent.FACE_SEEN
-            if evento.kind == PerceptionEventKind.FACE_SEEN
-            else AnimIntent.LIGHT
-        )
+        if evento.kind == PerceptionEventKind.FACE_SEEN:
+            intent = AnimIntent.FACE_SEEN
+        elif evento.kind == PerceptionEventKind.MOTION_HINT:
+            intent = AnimIntent.MOTION
+        else:
+            intent = AnimIntent.LIGHT
+        if self._na_base_efetivo() and self._face.ativo:
+            self._perception_pendente = intent
+            logger.info("Ambiente: %s observado; reação após câmera", evento.kind.value)
+            return
         pool = self._anim_director.pool(
             set(self.cli.animation_groups.keys()),
             self._ctx_anim(),
@@ -277,6 +305,23 @@ class Companion(CompanionVoz):
         )
         if pool and self._fila.enviar_anim(pool, prioridade=False):
             self._ultimo_perception_anim = agora
+            logger.info(
+                "Ambiente: %s -> reação visual (pool=%d)",
+                evento.kind.value,
+                len(pool),
+            )
+
+    def _despachar_perception_pendente(self) -> None:
+        intent = self._perception_pendente
+        if intent is None or self._face.ativo or self._fila.ocupada:
+            return
+        self._perception_pendente = None
+        pool = self._anim_director.pool(
+            set(self.cli.animation_groups.keys()), self._ctx_anim(), intent
+        )
+        if pool and self._fila.enviar_anim(pool, prioridade=False):
+            self._ultimo_perception_anim = time.monotonic()
+            logger.info("Ambiente: reação %s após observação", intent.value)
 
     def _quieto_base_anim(self) -> bool:
         if self._pos_tts_ativo():
@@ -456,10 +501,16 @@ class Companion(CompanionVoz):
             ):
                 return True
             return False
-        from cozmo_companion.core.motor_cozmo import _oled_anim_vivo, ppclip_base_ativo
+        from cozmo_companion.core.motor_cozmo import (
+            _oled_anim_vivo,
+            keeper_base_ativo,
+            ppclip_base_ativo,
+        )
 
         ac = self.cli.anim_controller
         if ac.playing_animation or ac.playing_audio or not ac.queue.is_empty():
+            return True
+        if keeper_base_ativo():
             return True
         if _oled_anim_vivo(self.cli) or ppclip_base_ativo(self.cli):
             return True
@@ -501,7 +552,10 @@ class Companion(CompanionVoz):
         na_base = self._na_base_efetivo()
         if na_base:
             sinal = None
-            if audio_na_base():
+            if (
+                audio_na_base()
+                and os.environ.get("CARINHO_TTS_NA_BASE", "0") == "1"
+            ):
                 palavra = random.choice(("Hehe", "Ai", "Beep", "Opa"))
                 sinal = sinal_para("", palavra)
             # Na base: cabeça + sinal TTS. Com ppclip ativo (manter_face), fila não pausa loop.
@@ -1021,10 +1075,14 @@ class Companion(CompanionVoz):
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
         if reset_cozmo01 and self._na_base_efetivo():
             from cozmo_companion.core.motor_cozmo import (
+                oled_frame_recente,
                 renovar_sessao_base_oled,
                 rx_link_ok,
             )
 
+            if oled_frame_recente() and rx_link_ok():
+                logger.info("Reset UDP evitado — frame OLED recente")
+                return True
             if renovar_sessao_base_oled(
                 self.cli, self._gov._medidor, forcar=True
             ):
@@ -1089,9 +1147,11 @@ class Companion(CompanionVoz):
             if self._na_base_efetivo():
                 from cozmo_companion.core.motor_cozmo import (
                     modo_base_olhos,
+                    resetar_sessao_oled_base,
                     reset_oled_watchdog_base,
                 )
 
+                resetar_sessao_oled_base()
                 reset_oled_watchdog_base()
                 modo_base_olhos(self.cli)
             self._marcar_udp_quieto(quiet_pre)
@@ -1105,6 +1165,22 @@ class Companion(CompanionVoz):
             self._sessao_guard.liberar(sucesso=ok)
             if self.ouvinte:
                 self.ouvinte.resume()
+
+    def _reabrir_udp_apos_wifi(self) -> bool:
+        """Wi-Fi voltou: o socket PyCozmo antigo costuma ficar sem RX."""
+        ok = self._reconectar_sessao_udp(
+            silencioso=False,
+            forcado=True,
+            cozmo01=True,
+        )
+        if ok:
+            self._base._preso_na_base = True
+            self._base._mesa_escolhida = False
+            from cozmo_companion.core.charger import definir_oled_preso_na_base
+
+            definir_oled_preso_na_base(True)
+            self._recuperador.stall_consecutivo = 0
+        return ok
 
     def _sessao_fresca_no_boot(self) -> None:
         """Boot: stream OLED na base — só reset UDP se sessão herdada stale (rx alto)."""
@@ -1172,42 +1248,75 @@ class Companion(CompanionVoz):
 
         definir_rx_link_ok(g.rx_ok)
 
-        if not cozmo_alcanavel():
-            wifi_ok = False
-            cortar_flood_udp_base(self.cli)
-            self._gov.marcar_quieto(float(os.environ.get("COZMO_OFFLINE_QUIET_S", "45")))
-            if g.pedir_wifi and not busy:
-                wifi_ok = reconectar_wifi()
-            elif (
-                not busy
-                and not quieto
-                and not g.rx_ok
-                and agora - self._ultimo_despertar_base
-                >= float(os.environ.get("COZMO_WIFI_STALL_S", "25"))
+        # Watchdog COZMO 01 (alto nível, à prova dos gates finos): rx_ok=False
+        # contínuo por muito tempo enquanto o AP segue conectado = sessão de
+        # aplicação travada (tela COZMO 01). A recuperação fina às vezes não
+        # dispara (early-returns silenciosos por alcance/estado/flood). Aqui
+        # reconectamos o UDP usando rota do AP (barato), sem depender de ICMP.
+        if not g.rx_ok:
+            if self._rx_stall_desde <= 0:
+                self._rx_stall_desde = agora
+            stall_cont = agora - self._rx_stall_desde
+            teto = float(os.environ.get("COZMO01_WATCHDOG_S", "30"))
+            cooldown = float(os.environ.get("COZMO01_WATCHDOG_COOLDOWN_S", "20"))
+            if (
+                stall_cont >= teto
+                and cozmo_rota_ap()
+                and agora - self._ultimo_reconnect_udp >= cooldown
             ):
-                from cozmo_companion.core.conexao import pode_tentar_wifi
+                from cozmo_companion.core.motor_cozmo import (
+                    detectar_cozmo01_suspeito,
+                )
 
-                if pode_tentar_wifi():
+                # Só reconecta (apaga a tela) se ela estiver REALMENTE travada em
+                # COZMO 01. Durante animação, drx=0 é benigno (clip é one-way, o
+                # firmware não manda telemetria) — reconectar apagaria a tela à toa.
+                if detectar_cozmo01_suspeito(self.cli):
+                    logger.warning(
+                        "COZMO 01 watchdog — tela travada %.0fs, reconectando UDP",
+                        stall_cont,
+                    )
+                    self._reconectar_sessao_udp(
+                        silencioso=False, forcado=True, cozmo01=True
+                    )
+                    self._rx_stall_desde = 0.0
+                    return
+        else:
+            self._rx_stall_desde = 0.0
+
+        if not cozmo_alcanavel():
+            if g.rx_ok and cozmo_rota_ap():
+                log_offline_quieto(
+                    "Ping falhou, mas UDP/RX vivo — mantendo sessão Cozmo."
+                )
+            else:
+                wifi_ok = False
+                cortar_flood_udp_base(self.cli)
+                self._gov.marcar_quieto(
+                    float(os.environ.get("COZMO_OFFLINE_QUIET_S", "45"))
+                )
+                if g.pedir_wifi and not busy:
                     wifi_ok = reconectar_wifi()
-            if wifi_ok:
-                self._monitor_rx.sincronizar(self.cli)
-                self._gov._medidor.reset()
-                self._base._preso_na_base = True
-                self._base._mesa_escolhida = False
-                from cozmo_companion.core.charger import definir_oled_preso_na_base
+                elif (
+                    not busy
+                    and not quieto
+                    and not g.rx_ok
+                    and agora - self._ultimo_despertar_base
+                    >= float(os.environ.get("COZMO_WIFI_STALL_S", "25"))
+                ):
+                    from cozmo_companion.core.conexao import pode_tentar_wifi
 
-                definir_oled_preso_na_base(True)
-                from cozmo_companion.core.motor_cozmo import ligar_oled_base
-
-                ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
-                self._recuperador.stall_consecutivo = 0
-            if not cozmo_alcanavel():
-                if not g.rx_ok:
-                    cortar_flood_udp_base(self.cli)
-                if agora - self._ultimo_saude_json >= 60.0:
-                    self._ultimo_saude_json = agora
-                    log_offline_quieto()
-                return
+                    if pode_tentar_wifi():
+                        wifi_ok = reconectar_wifi()
+                if wifi_ok:
+                    self._reabrir_udp_apos_wifi()
+                if not cozmo_alcanavel():
+                    if not g.rx_ok:
+                        cortar_flood_udp_base(self.cli)
+                    if agora - self._ultimo_saude_json >= 60.0:
+                        self._ultimo_saude_json = agora
+                        log_offline_quieto()
+                    return
 
         if self._na_base_efetivo() and not g.rx_ok:
             from cozmo_companion.core.conexao import avisar_modo_wifi_setup
@@ -1236,17 +1345,7 @@ class Companion(CompanionVoz):
 
         if g.pedir_wifi and not busy:
             if reconectar_wifi():
-                self._monitor_rx.sincronizar(self.cli)
-                self._gov._medidor.reset()
-                self._base._preso_na_base = True
-                self._base._mesa_escolhida = False
-                from cozmo_companion.core.charger import definir_oled_preso_na_base
-
-                definir_oled_preso_na_base(True)
-                from cozmo_companion.core.motor_cozmo import ligar_oled_base
-
-                ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
-                self._recuperador.stall_consecutivo = 0
+                self._reabrir_udp_apos_wifi()
 
         drx, dtx, _ = self._gov._medidor.amostra(self.cli)
         tx_stall_base = int(os.environ.get("COZMO_BASE_TX_STALL", "280"))
@@ -1273,9 +1372,15 @@ class Companion(CompanionVoz):
                 cortar_flood_udp_base(self.cli)
                 pulso_sync_base(self.cli, forcado=True)
                 ping_sessao_base(self.cli)
+                _dg = diagnostico(self.cli)
                 logger.warning(
-                    "Base: stall RX (dtx=%d) — ping (recuperador trata)",
+                    "Base: stall RX (dtx=%d) — ping (recuperador trata) "
+                    "[rf=%d rp=%d desc=%d rb=%d]",
                     dtx,
+                    _dg.get("recv_frames", 0),
+                    _dg.get("recv_packets", 0),
+                    _dg.get("discarded", 0),
+                    _dg.get("recv_bytes", 0),
                 )
 
         if agora - self._ultimo_saude_json >= 12.0:
@@ -1418,6 +1523,11 @@ class Companion(CompanionVoz):
         from cozmo_companion.core.motor_cozmo import tick_espiar_escuro
 
         tick_espiar_escuro(self.cli)
+        # As janelas normais do FaceWatch já alimentam o detector de luz.
+        # Abrir uma segunda sonda aqui disputa o stream de câmera com o OLED
+        # e pode deixar o rádio preso na tela de recuperação "COZMO 01".
+        if os.environ.get("COZMO_FACE_BASE", "0") == "1":
+            return
         self._detector_escuro.tick_probe(
             self._face,
             na_base=True,
@@ -1469,6 +1579,7 @@ class Companion(CompanionVoz):
             ),
             pode_camera=pode_cam,
         )
+        self._despachar_perception_pendente()
 
     def _loop_pet_autonomo(self) -> None:
         safety = self._safety_state()
@@ -1676,6 +1787,10 @@ class Companion(CompanionVoz):
         self._ultimo_reconnect_udp = time.monotonic()
         logger.info("Vivo preso_na_base=%s", self._base.preso_na_base)
 
+        from cozmo_companion.core.radio_keepalive import iniciar_keepalive_radio
+
+        iniciar_keepalive_radio()
+
         loop_sleep = float(os.environ.get("LOOP_SLEEP", "0.25"))
         from cozmo_companion.core.motor_cozmo import definir_rx_link_ok
 
@@ -1709,9 +1824,7 @@ class Companion(CompanionVoz):
                     ):
                         self._ultimo_wifi_offline = agora
                         if reconectar_wifi(forcado=not cozmo_rota_ap()):
-                            self._monitor_rx.sincronizar(self.cli)
-                            self._gov._medidor.reset()
-                            online = True
+                            online = self._reabrir_udp_apos_wifi()
                 elif online:
                     self._ultimo_wifi_offline = 0.0
                 if online:

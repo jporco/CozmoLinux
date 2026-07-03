@@ -31,6 +31,9 @@ class AnimIntent(str, Enum):
     PET = "pet"
     SLEEP = "sleep"
     CLIFF = "cliff"
+    PICKED_UP = "picked_up"
+    SHAKE = "shake"
+    PUT_DOWN = "put_down"
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,31 @@ class AnimationDirector:
             candidatos = GRUPOS_CARINHO_BASE if ctx != ContextoAnim.MESA else GRUPOS_CARINHO_MESA
         elif intent == AnimIntent.CLIFF:
             candidatos = GRUPOS_SUSTO
+        elif intent == AnimIntent.PICKED_UP:
+            candidatos = (
+                "ReactToPokeReaction",
+                "CodeLabAmazed",
+                "CodeLabWhew",
+                "InterestedFace",
+                "CodeLabCurious",
+            )
+        elif intent == AnimIntent.SHAKE:
+            candidatos = (
+                "CodeLabDizzy",
+                "CodeLabWhoa",
+                "CodeLabWhew",
+                "CodeLabUnhappy",
+                "ReactToPokeReaction",
+                "CodeLabAmazed",
+            )
+        elif intent == AnimIntent.PUT_DOWN:
+            candidatos = (
+                "CodeLabHappy",
+                "CodeLabYes",
+                "CodeLabReactHappy",
+                "InterestedFace",
+                "NeutralFace",
+            )
         elif intent == AnimIntent.LIGHT:
             candidatos = (
                 "CodeLabBlink",

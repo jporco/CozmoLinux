@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from cozmo_companion.core.anims import ContextoAnim, filtrar_por_contexto
+from cozmo_companion.core.animation_director import AnimationDirector
 from cozmo_companion.core.companion import Companion, GRUPOS_CARINHO
 
 
@@ -42,9 +43,13 @@ class TestCompanionBase(unittest.TestCase):
         c._falando = False
         c._pos_tts_ativo = MagicMock(return_value=False)
         c._fila = MagicMock()
+        c._fila.enviar_anim.return_value = True
+        c._anim_director = AnimationDirector()
+        c._ctx_anim = MagicMock(return_value=ContextoAnim.BASE)
         c._fila.livre = True
         c._na_base_efetivo = MagicMock(return_value=True)
         c.cli = MagicMock()
+        c.cli.animation_groups = {"ReactToPokeReaction": None, "InterestedFace": None}
         c.cli.anim_controller.playing_animation = False
         c.cli.anim_controller.playing_audio = False
         c.cli.anim_controller.queue.is_empty.return_value = True
@@ -66,8 +71,12 @@ class TestCompanionBase(unittest.TestCase):
         c._vivo = MagicMock()
         c._carinho = MagicMock()
         c._fila = MagicMock()
+        c._fila.enviar_anim.return_value = True
+        c._anim_director = AnimationDirector()
+        c._ctx_anim = MagicMock(return_value=ContextoAnim.BASE)
         c._base_usa_rosto_vivo = MagicMock(return_value=True)
         c.cli = MagicMock()
+        c.cli.animation_groups = {"ReactToPokeReaction": None, "InterestedFace": None}
         with patch.dict(os.environ, {"CARINHO_TTS_NA_BASE": "0"}):
             with patch("cozmo_companion.core.charger.carga_prioritaria", return_value=False):
                 with patch("cozmo_companion.core.companion.audio_na_base", return_value=True):
@@ -76,7 +85,8 @@ class TestCompanionBase(unittest.TestCase):
                     ) as manter:
                         Companion._ao_carinho_cabeca(c)
         c._fila.enviar_sinal_tts.assert_not_called()
-        manter.assert_called_once_with(c.cli)
+        c._fila.enviar_anim.assert_called_once()
+        manter.assert_not_called()
 
     def test_stt_idle_rms_na_base(self) -> None:
         c = MagicMock(spec=Companion)

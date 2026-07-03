@@ -112,6 +112,10 @@ class Companion(CompanionVoz):
         self._base = BaseGuard()
         self._vivo = VivoNaBase()
         self._anim_director = AnimationDirector()
+        from cozmo_companion.core.sensory_reactions import MotionReactionDetector
+
+        self._motion_reactions = MotionReactionDetector(self._on_motion_reaction)
+        self._ultima_reacao_sensor = 0.0
         self._espirito = Espirito()
         self._mesa = MesaSegura(cli)
         self._explorador = ExploradorMesa(self._mesa)
@@ -208,6 +212,31 @@ class Companion(CompanionVoz):
         self._sono_por_escuro = False
         logger.info("Ambiente claro confirmado — acordando")
         self._vida.despertar(self.cli, motivo="luz", preso_na_base=True)
+
+    def _on_motion_reaction(self, evento: object) -> None:
+        """Serializa sensores físicos na mesma fila de animações."""
+        from cozmo_companion.core.sensory_reactions import SensorReaction
+
+        agora = time.monotonic()
+        if agora - self._ultima_reacao_sensor < float(
+            os.environ.get("COZMO_SENSOR_REACTION_COOLDOWN_S", "2.5")
+        ):
+            return
+        if self._fila.ocupada or self._falando or self._llm_ocupado:
+            return
+        intent = {
+            SensorReaction.PICKED_UP: AnimIntent.PICKED_UP,
+            SensorReaction.SHAKE: AnimIntent.SHAKE,
+            SensorReaction.PUT_DOWN: AnimIntent.PUT_DOWN,
+        }.get(evento)
+        if intent is None:
+            return
+        pool = self._anim_director.pool(
+            set(self.cli.animation_groups.keys()), self._ctx_anim(), intent
+        )
+        if pool and self._fila.enviar_anim(pool, prioridade=False):
+            self._ultima_reacao_sensor = agora
+            logger.info("Sensor físico: %s -> reação leve", getattr(evento, "value", evento))
 
     # ── estado base ──
 
@@ -540,50 +569,16 @@ class Companion(CompanionVoz):
         self._detector_escuro.marcar_despertar()
         logger.info("Carinho")
         self._vida.registrar_interacao(25.0)
-        rx_pause = float(os.environ.get("CARINHO_RX_PAUSE_S", "45"))
-        self._monitor_rx.pausar(rx_pause)
-        self._gov.marcar_quieto(float(os.environ.get("CARINHO_UDP_QUIET_S", "10")))
-        # Feedback imediato — cabeça mexe, olhos procedural continuam.
-        try:
-            self._vivo.reagir_ouvir(self.cli)
-            self._carinho.sincronizar_baseline(self.cli)
-        except Exception:
-            pass
         na_base = self._na_base_efetivo()
         if na_base:
-            sinal = None
-            if (
-                audio_na_base()
-                and os.environ.get("CARINHO_TTS_NA_BASE", "0") == "1"
-            ):
-                palavra = random.choice(("Hehe", "Ai", "Beep", "Opa"))
-                sinal = sinal_para("", palavra)
-            # Na base: cabeça + sinal TTS. Com ppclip ativo (manter_face), fila não pausa loop.
-            if sinal:
-                from cozmo_companion.core.motor_cozmo import (
-                    pausar_base_oled_para_texto,
-                    segurar_base_oled_loop,
-                )
-
-                hold = (
-                    float(os.environ.get("COZMO_TTS_SINAL_QUIET_S", "8"))
-                    + float(os.environ.get("TTS_DRAIN_S", "1.8"))
-                    + 2.0
-                )
-                segurar_base_oled_loop(hold)
-                pausar_base_oled_para_texto(hold, self.cli)
-                self._fila.enviar_sinal_tts(sinal, prioridade=True)
-            elif self._base_usa_rosto_vivo():
-                from cozmo_companion.core.motor_cozmo import manter_oled_base_ativo
-
-                manter_oled_base_ativo(self.cli)
+            pool = self._anim_director.pool(
+                set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.PET
+            )
+            if pool:
+                self._fila.enviar_anim(pool, prioridade=False)
+            self._carinho.sincronizar_baseline(self.cli)
         else:
-            self._fila.enviar_anim(GRUPOS_CARINHO, prioridade=True)
-            if audio_na_base():
-                self._fila.enviar_carinho_base(
-                    "^^",
-                    sinal_para("", random.choice(("Hehe", "Ai", "Beep"))),
-                )
+            self._fila.enviar_anim(GRUPOS_CARINHO, prioridade=False)
 
     def _ao_toggle_botao(self) -> None:
         oled_s = float(os.environ.get("BOTAO_OLED_S", "2.5"))
@@ -1838,6 +1833,7 @@ class Companion(CompanionVoz):
                         face_ativo=self._face.buscando,
                         cabeca_externa=self._carinho_cabeca_externa(),
                     )
+                    self._motion_reactions.update(self.cli)
                 self._processar_stt()
                 if not online:
                     self.tela.tick(direct=False)

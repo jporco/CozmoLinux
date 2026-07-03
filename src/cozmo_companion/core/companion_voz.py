@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from cozmo_companion.core import hora
+from cozmo_companion.core.animation_director import AnimIntent
 from cozmo_companion.core.charger import carregando
 from cozmo_companion.core.conexao import conexao_ok
 from cozmo_companion.core.limites import limites
@@ -109,6 +110,7 @@ class CompanionVoz:
         self._stt_base_wake_ate = 0.0
         self._ultimo_barulho = 0.0
         self._ultimo_latido = 0.0
+        self._ultima_reacao_fala = 0.0
         self._espontaneo = FalaEspontanea()
         self.ouvinte: Ouvinte | None = None
         self._ouvinte_notif: OuvinteNotificacoes | None = None
@@ -642,13 +644,12 @@ class CompanionVoz:
         )
         grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
         if self._na_base_efetivo():
-            from cozmo_companion.core.motor_cozmo import tocar_clip_base_seguro
-
-            disponiveis = set(self.cli.animation_groups.keys())
-            candidatos = [g for g in grupos if g in disponiveis]
-            if candidatos:
-                tocar_clip_base_seguro(self.cli, random.choice(candidatos), hold_s=3.5)
-            logger.info("Barulho na base — reação somente visual")
+            pool = self._anim_director.pool(
+                set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
+            )
+            if pool:
+                self._fila.enviar_anim(pool, prioridade=False)
+            logger.info("Barulho na base — reação leve serializada")
             return
         self._pedir_fala_espontanea(
             random.choice(("opa", "ei", "calma")),
@@ -669,13 +670,12 @@ class CompanionVoz:
         )
         grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
         if self._na_base_efetivo():
-            from cozmo_companion.core.motor_cozmo import tocar_clip_base_seguro
-
-            disponiveis = set(self.cli.animation_groups.keys())
-            candidatos = [g for g in grupos if g in disponiveis]
-            if candidatos:
-                tocar_clip_base_seguro(self.cli, random.choice(candidatos), hold_s=3.5)
-            logger.info("Latido na base — reação somente visual")
+            pool = self._anim_director.pool(
+                set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
+            )
+            if pool:
+                self._fila.enviar_anim(pool, prioridade=False)
+            logger.info("Latido na base — reação leve serializada")
             return
         self._pedir_fala_espontanea("au au", tela=None, grupos=grupos, prioridade=True)
 
@@ -690,6 +690,28 @@ class CompanionVoz:
             self._reagir_latido(str(valor))
 
     def _tratar_texto_ouvido(self, texto: str) -> None:
+        if (
+            self._na_base_efetivo()
+            and os.environ.get("BASE_VOICE_REACTIONS_ONLY", "1") == "1"
+        ):
+            self._wake.encerrar_espera()
+            agora = time.monotonic()
+            cooldown = float(os.environ.get("BASE_VOICE_REACTION_COOLDOWN_S", "4"))
+            if (
+                agora - self._ultima_reacao_fala >= cooldown
+                and self._fila.livre
+                and not self._periodo_quieto_ativo()
+                and getattr(getattr(self, "_gov", None), "ultimo_rx_ok", True)
+            ):
+                pool = self._anim_director.pool(
+                    set(self.cli.animation_groups.keys()),
+                    self._ctx_anim(),
+                    AnimIntent.SOUND,
+                )
+                if pool and self._fila.enviar_anim(pool, prioridade=False):
+                    self._ultima_reacao_fala = agora
+                    logger.info("Voz ambiente: reação leve (%s)", texto[:30])
+            return
         if parece_latido(texto):
             self._reagir_latido(texto)
             return

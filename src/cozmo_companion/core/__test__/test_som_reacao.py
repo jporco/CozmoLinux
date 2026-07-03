@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from cozmo_companion.core import som_reacao
+from cozmo_companion.core.animation_director import AnimationDirector
+from cozmo_companion.core.anims import ContextoAnim
 from cozmo_companion.core.companion_voz import CompanionVoz, REACOES_BARULHO, REACOES_LATIDO
 
 
@@ -17,6 +19,11 @@ class FakeCompanion(CompanionVoz):
         self._base = MagicMock(preso_na_base=True)
         self._vida = MagicMock()
         self._fila = MagicMock()
+        self._fila.livre = True
+        self._fila.enviar_anim.return_value = True
+        self._anim_director = AnimationDirector()
+        self._ctx_anim = MagicMock(return_value=ContextoAnim.BASE)
+        self._gov = MagicMock(ultimo_rx_ok=True)
         self._monitor_rx = MagicMock()
         self._falando = False
         self._llm_ocupado = False
@@ -48,7 +55,8 @@ class TestSomReacao(unittest.TestCase):
             c.cli.animation_groups = {g: MagicMock() for g in REACOES_BARULHO}
             c._stt_fila.put(("som", "barulho", 6400.0))
             c._processar_stt()
-        visual.assert_called_once_with(c.cli, ANY, hold_s=3.5)
+        visual.assert_not_called()
+        c._fila.enviar_anim.assert_called_once()
         tocar.assert_not_called()
         c._vida.registrar_interacao.assert_called_once()
 
@@ -63,7 +71,8 @@ class TestSomReacao(unittest.TestCase):
         ):
             c.cli.animation_groups = {g: MagicMock() for g in REACOES_LATIDO}
             c._tratar_texto_ouvido("ao")
-        visual.assert_called_once_with(c.cli, ANY, hold_s=3.5)
+        visual.assert_not_called()
+        c._fila.enviar_anim.assert_called_once()
         tocar.assert_not_called()
 
     def test_volume_reacao_recebe_boost(self) -> None:

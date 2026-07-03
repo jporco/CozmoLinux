@@ -204,8 +204,9 @@ class GovernadorCozmo:
         elif self._wifi_ok is None:
             self._wifi_ok = cozmo_alcanavel() and cozmo_rota_ap()
 
-        rx_ok = monitor_rx.tick(cli)
+        rx_monitor_ok = monitor_rx.tick(cli)
         drx, dtx, r_delta = self._medidor.amostra(cli)
+        rx_ok = rx_monitor_ok or drx > 0
         r_acum = ratio_udp(cli)
         if r_delta > 0:
             if self._ratio_ema <= 0:
@@ -240,7 +241,7 @@ class GovernadorCozmo:
             and (drx > 0 or dtx < tx_ppclip_ok)
         )
 
-        wifi_ok = bool(self._wifi_ok)
+        wifi_ok = bool(self._wifi_ok) or (rx_ok and cozmo_rota_ap())
         udp_vivo = rx_ok and (wifi_ok or conexao_ok(cli))
 
         if em_quieto:

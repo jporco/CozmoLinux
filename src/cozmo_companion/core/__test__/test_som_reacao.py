@@ -40,11 +40,15 @@ class TestSomReacao(unittest.TestCase):
         c = FakeCompanion()
         with (
             patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
-            patch.object(c, "_pedir_fala_espontanea", return_value=True) as falar,
+            patch(
+                "cozmo_companion.core.motor_cozmo.tocar_clip_base_seguro",
+                return_value=True,
+            ) as visual,
         ):
+            c.cli.animation_groups = {g: MagicMock() for g in REACOES_BARULHO}
             c._stt_fila.put(("som", "barulho", 6400.0))
             c._processar_stt()
-        falar.assert_called_once_with(ANY, tela=None, grupos=REACOES_BARULHO, prioridade=True)
+        visual.assert_called_once_with(c.cli, ANY, hold_s=3.5)
         tocar.assert_not_called()
         c._vida.registrar_interacao.assert_called_once()
 
@@ -52,16 +56,14 @@ class TestSomReacao(unittest.TestCase):
         c = FakeCompanion()
         with (
             patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
-            patch.object(c, "_pedir_fala_espontanea", return_value=True) as falar,
+            patch(
+                "cozmo_companion.core.motor_cozmo.tocar_clip_base_seguro",
+                return_value=True,
+            ) as visual,
         ):
+            c.cli.animation_groups = {g: MagicMock() for g in REACOES_LATIDO}
             c._tratar_texto_ouvido("ao")
-        falar.assert_called_once()
-        falar.assert_called_once_with(
-            "au au",
-            tela=None,
-            grupos=REACOES_LATIDO,
-            prioridade=True,
-        )
+        visual.assert_called_once_with(c.cli, ANY, hold_s=3.5)
         tocar.assert_not_called()
 
     def test_volume_reacao_recebe_boost(self) -> None:

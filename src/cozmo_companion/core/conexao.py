@@ -20,6 +20,7 @@ _ultimo_aviso_wifi_setup = 0.0
 _ultimo_wifi_tentativa = 0.0
 _ultimo_log_offline = 0.0
 _ultimo_rescan_wifi = 0.0
+_wlan0_preso_desde = 0.0
 
 
 def cozmo_rota_ap() -> bool:
@@ -67,19 +68,41 @@ def wlan0_estado() -> tuple[str, str]:
 
 
 def wlan0_preso_cozmo() -> bool:
-    """wlan0 tentando Cozmo sem rota direta — NM preso ou rota via casa."""
+    """wlan0 em Cozmo_* morto de forma PERSISTENTE — nunca durante o handshake.
+
+    O bug antigo derrubava o wlan0 no meio da conexão (estado transitório
+    'connecting'/'config', rota ainda não subiu), criando um loop conectar→derrubar
+    que impedia QUALQUER comunicação com o robô. Aqui: estados transitórios nunca
+    contam como preso, e só liberamos após carência contínua sem rota/ping.
+    """
+    global _wlan0_preso_desde
     estado, conexao = wlan0_estado()
     if not conexao.upper().startswith("COZMO_"):
+        _wlan0_preso_desde = 0.0
+        return False
+    # Handshake/DHCP/auth em progresso → está conectando, não derrubar.
+    transitorio = (
+        "connecting" in estado
+        or "prepare" in estado
+        or "config" in estado  # cobre "(config)" e "(ip config)"
+        or "ip check" in estado
+        or "need auth" in estado
+        or "secondaries" in estado
+    )
+    if transitorio:
+        _wlan0_preso_desde = 0.0
         return False
     if cozmo_rota_ap() and cozmo_alcanavel():
+        _wlan0_preso_desde = 0.0
         return False
-    preso = (
-        "connecting" in estado
-        or "failed" in estado
-        or "disconnected" in estado
-        or not cozmo_rota_ap()
-    )
-    return preso
+    # Conectado a Cozmo_* mas sem rota/ping — candidato a preso; exige persistência
+    # para dar tempo da rota/DHCP subir antes de qualquer disconnect.
+    agora = time.monotonic()
+    if _wlan0_preso_desde <= 0:
+        _wlan0_preso_desde = agora
+        return False
+    graca = float(os.environ.get("COZMO_WLAN0_PRESO_GRACA_S", "15"))
+    return agora - _wlan0_preso_desde >= graca
 
 
 def liberar_wlan0_cozmo() -> bool:
@@ -106,13 +129,24 @@ def nunca_desconectar_wifi() -> bool:
 def cozmo_alcanavel() -> bool:
     if not cozmo_rota_ap():
         return False
+    # Firmware do Cozmo dorme o rádio quando o tráfego é esparso: a 1ª resposta
+    # pode levar centenas de ms a ~1s. -W2 dava falso "offline"/wifi=FAIL e disparava
+    # recuperação à toa. 2 tentativas com timeout maior tolera o wake do rádio.
+    timeout_s = os.environ.get("COZMO_PING_TIMEOUT_S", "4")
     try:
         r = subprocess.run(
-            ["ping", "-c1", "-W2", ROBOT_IP],
+            ["ping", "-c1", "-W", timeout_s, ROBOT_IP],
             capture_output=True,
-            timeout=5,
+            timeout=float(timeout_s) + 1.5,
         )
-        return r.returncode == 0
+        if r.returncode == 0:
+            return True
+        r2 = subprocess.run(
+            ["ping", "-c1", "-W", timeout_s, ROBOT_IP],
+            capture_output=True,
+            timeout=float(timeout_s) + 1.5,
+        )
+        return r2.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
@@ -362,6 +396,8 @@ def diagnostico(cli) -> dict:
         "recv_frames": getattr(recv, "received_frames", 0) if recv else 0,
         "sent_frames": getattr(send, "sent_frames", 0) if send else 0,
         "discarded": getattr(recv, "discarded_frames", 0) if recv else 0,
+        "recv_packets": getattr(recv, "received_packets", 0) if recv else 0,
+        "recv_bytes": getattr(recv, "received_bytes", 0) if recv else 0,
     }
 
 
@@ -866,9 +902,28 @@ def abrir_cliente(
     protocol_log_level: str = "WARNING",
     robot_log_level: str = "WARNING",
 ):
+    import pycozmo
     from pycozmo import client as cozmo_client
     from pycozmo.run import setup_basic_logging
 
+    # setup_basic_logging adiciona um StreamHandler novo a cada chamada sem remover
+    # os antigos. Como reabrimos o cliente a cada reconexão, os handlers se acumulam
+    # e cada linha do pycozmo passa a ser escrita N vezes — o I/O síncrono trava o
+    # loop principal e gera falsos COZMO 01 (bola de neve). Limpa antes de reconfigurar.
+    for _lg in (
+        pycozmo.logger,
+        pycozmo.logger_protocol,
+        pycozmo.logger_robot,
+        pycozmo.logger_reaction,
+        pycozmo.logger_behavior,
+        pycozmo.logger_animation,
+    ):
+        for _h in list(_lg.handlers):
+            _lg.removeHandler(_h)
+            try:
+                _h.close()
+            except Exception:
+                pass
     setup_basic_logging(
         log_level=log_level,
         protocol_log_level=protocol_log_level,

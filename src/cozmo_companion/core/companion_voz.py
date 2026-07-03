@@ -461,6 +461,15 @@ class CompanionVoz:
         self._abrir_janela_stt_base()
         self._vida.acordar_para_voz(self.cli)
         logger.info("Wake acordou")
+        if (
+            self._na_base_efetivo()
+            and os.environ.get("WAKE_BASE_VISUAL_ONLY", "1") == "1"
+        ):
+            # Dizer apenas "Cozmo" não deve somar TTS ao stream OLED. Essa
+            # sobreposição enche o UDP do firmware e termina em COZMO 01.
+            self._fila.enviar_anim(REACOES_WAKE, prioridade=False)
+            logger.info("Wake na base — reação somente visual")
+            return
         na_carga = self._na_base_efetivo() and carregando(self.cli)
         if na_carga and os.environ.get("WAKE_NA_BASE_RELAX", "1") != "1":
             return
@@ -532,8 +541,13 @@ class CompanionVoz:
             if os.environ.get("DORMIR_VOZ_SEM_LLM", "1") == "1":
                 logger.info("Dormir imediato (voz): %s", t[:24])
                 return
-        if comando_util(t) and self._na_base_efetivo() and self._responder_util_tela(t):
-            return
+        if comando_util(t) and self._na_base_efetivo():
+            util_cooldown = float(os.environ.get("UTIL_VOZ_COOLDOWN_S", "12"))
+            if agora - self._ultimo_util_tela < util_cooldown:
+                logger.info("Util repetido/eco ignorado: %s", t[:30])
+                return
+            if self._responder_util_tela(t):
+                return
         self.usuario_q.put(texto)
 
     def _processar_stt(self) -> None:
@@ -627,6 +641,15 @@ class CompanionVoz:
             20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base
         )
         grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
+        if self._na_base_efetivo():
+            from cozmo_companion.core.motor_cozmo import tocar_clip_base_seguro
+
+            disponiveis = set(self.cli.animation_groups.keys())
+            candidatos = [g for g in grupos if g in disponiveis]
+            if candidatos:
+                tocar_clip_base_seguro(self.cli, random.choice(candidatos), hold_s=3.5)
+            logger.info("Barulho na base — reação somente visual")
+            return
         self._pedir_fala_espontanea(
             random.choice(("opa", "ei", "calma")),
             tela=None,
@@ -645,6 +668,15 @@ class CompanionVoz:
             18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base
         )
         grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
+        if self._na_base_efetivo():
+            from cozmo_companion.core.motor_cozmo import tocar_clip_base_seguro
+
+            disponiveis = set(self.cli.animation_groups.keys())
+            candidatos = [g for g in grupos if g in disponiveis]
+            if candidatos:
+                tocar_clip_base_seguro(self.cli, random.choice(candidatos), hold_s=3.5)
+            logger.info("Latido na base — reação somente visual")
+            return
         self._pedir_fala_espontanea("au au", tela=None, grupos=grupos, prioridade=True)
 
     def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:

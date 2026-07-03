@@ -43,6 +43,7 @@ class TestMotorCozmo(unittest.TestCase):
         motor._modo_sono_oled = False
         motor._base_oled_loop_hold_ate = 0.0
         motor._base_oled_loop_hold_desde = 0.0
+        motor._base_oled_anim_loop_pausado_ate = 0.0
 
     def test_sono_oled_texto_bloqueia_ppclip(self) -> None:
         cli = MagicMock()
@@ -700,6 +701,173 @@ class TestMotorCozmo(unittest.TestCase):
                                 vigiar_flood_base(cli)
         parar.assert_not_called()
 
+    def test_oled_keeper_vivo_nao_toca_ppclip_quando_loop_off(self) -> None:
+        cli = MagicMock()
+        cli.animation_groups = {"IdleOnCharger": MagicMock()}
+        cli.battery_voltage = 4.43
+        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "0"}):
+            with patch(
+                "cozmo_companion.core.motor_cozmo._candidatos_charger_oled",
+                return_value=("IdleOnCharger",),
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo._pool_oled_com_frames",
+                    return_value=(),
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo._iniciar_keeper_clip_oled_base",
+                        return_value=True,
+                    ) as keeper:
+                        with patch(
+                            "cozmo_companion.core.motor_cozmo._exibir_clip_base",
+                            return_value=True,
+                        ) as ppclip:
+                            motor._ativar_oled_keeper_vivo(cli, time.monotonic())
+        keeper.assert_called_once_with(cli, "IdleOnCharger")
+        ppclip.assert_not_called()
+
+    def test_tick_charger_keeper_nao_reenvia_frame_fora_do_keeper(self) -> None:
+        cli = MagicMock()
+        motor._charger_keeper_ativo = True
+        motor._charger_stream_sessao = True
+        motor._charger_oled_nome = "IdleOnCharger"
+        cli.anim_controller.last_image_pkt = MagicMock()
+        try:
+            with patch.object(motor, "base_oled_usa_charger", return_value=True):
+                with patch.object(motor, "base_oled_carga_cheia_ativo", return_value=True):
+                    with patch.object(motor, "keeper_base_ativo", return_value=True):
+                        with patch.object(motor, "_refresh_sessao_oled_leve"):
+                            self.assertTrue(motor._tick_charger_oled(cli))
+            cli.conn.send.assert_not_called()
+        finally:
+            motor._charger_keeper_ativo = False
+            motor._charger_stream_sessao = False
+            motor._charger_oled_nome = None
+
+    def test_tick_charger_keeper_desliga_anim_controller(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        ac.thread = MagicMock(is_alive=lambda: False)
+        motor._charger_keeper_ativo = True
+        motor._charger_stream_sessao = True
+        motor._charger_oled_nome = "IdleOnCharger"
+        try:
+            with patch.object(motor, "base_oled_usa_charger", return_value=True):
+                with patch.object(motor, "base_oled_carga_cheia_ativo", return_value=True):
+                    with patch.object(motor, "keeper_base_ativo", return_value=True):
+                        with patch.object(motor, "_refresh_sessao_oled_leve"):
+                            self.assertTrue(motor._tick_charger_oled(cli))
+        finally:
+            motor._charger_keeper_ativo = False
+            motor._charger_stream_sessao = False
+            motor._charger_oled_nome = None
+        ac.enable_procedural_face.assert_called_with(False)
+        ac.enable_animations.assert_called_with(False)
+
+    def test_parar_flood_anim_keeper_desliga_thread_anim(self) -> None:
+        cli = MagicMock()
+        ac = cli.anim_controller
+        th = MagicMock(is_alive=lambda: True)
+        ac.thread = th
+        with patch.object(motor, "keeper_base_ativo", return_value=True):
+            with patch.object(motor, "base_oled_carga_cheia_ativo", return_value=True):
+                motor.parar_flood_anim(cli)
+        ac.enable_procedural_face.assert_called_with(False)
+        ac.enable_animations.assert_called_with(False)
+        cli.cancel_anim.assert_called()
+        th.join.assert_called()
+
+    def test_enviar_audio_base_charger_nao_usa_play_audio(self) -> None:
+        cli = MagicMock()
+        pkt = MagicMock()
+        with patch.object(motor, "base_oled_usa_charger", return_value=True):
+            motor.enviar_audio_fila(cli, pkt, manter_face=True)
+        cli.conn.send.assert_called_with(pkt)
+        cli.anim_controller.play_audio.assert_not_called()
+        self.assertNotIn(call(True), cli.anim_controller.enable_animations.call_args_list)
+
+    def test_variar_clip_loop_off_forca_keeper_frames(self) -> None:
+        cli = MagicMock()
+        cli.animation_groups.keys.return_value = ["IdleOnCharger", "Hiccup"]
+        motor._ultimo_variar_clip = 0.0
+        motor._charger_stream_sessao = True
+        motor._charger_keeper_ativo = False
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "COZMO_BASE_OLED_ANIM_LOOP": "0",
+                    "COZMO_BASE_VARIAR_CHANCE": "1",
+                    "COZMO_CHARGER_PLAY_STREAM": "0",
+                },
+            ):
+                with patch(
+                    "cozmo_companion.core.charger.base_oled_estavel",
+                    return_value=False,
+                ):
+                    with patch(
+                        "cozmo_companion.core.charger.carga_prioritaria",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "cozmo_companion.core.ambiente_escuro.detector_escuro"
+                        ) as escuro:
+                            escuro.return_value.escuro = False
+                            with patch.object(motor, "rx_link_ok", return_value=True):
+                                with patch.object(
+                                    motor, "base_oled_usa_charger", return_value=True
+                                ):
+                                    with patch.object(
+                                        motor,
+                                        "_pool_oled_com_frames",
+                                        return_value=("Hiccup",),
+                                    ):
+                                        with patch.object(
+                                            motor,
+                                            "_iniciar_keeper_clip_oled_base",
+                                            return_value=True,
+                                        ) as keeper:
+                                            self.assertTrue(
+                                                motor.variar_clip_base_oled(
+                                                    cli, forcado=True
+                                                )
+                                            )
+        finally:
+            motor._charger_keeper_ativo = False
+            motor._charger_stream_sessao = False
+            motor._ultimo_variar_clip = 0.0
+        keeper.assert_called_once_with(cli, "Hiccup")
+
+    def test_anim_base_usa_keeper_quando_loop_off(self) -> None:
+        cli = MagicMock()
+        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "0"}):
+            with patch(
+                "cozmo_companion.core.anims.permitido_sem_rodas_na_base",
+                return_value=True,
+            ):
+                with patch(
+                    "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
+                    return_value=True,
+                ):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo._iniciar_keeper_clip_oled_base",
+                        return_value=True,
+                    ) as keeper:
+                        with patch(
+                            "cozmo_companion.core.anim_base_patch.play_grupo_sem_rodas_na_base",
+                            return_value=True,
+                        ) as ppclip:
+                            self.assertTrue(
+                                animar_grupo(
+                                    cli,
+                                    "HiccupGetIn",
+                                    na_base=True,
+                                    procedural_antes=True,
+                                )
+                            )
+        keeper.assert_called_once_with(cli, "HiccupGetIn")
+        ppclip.assert_not_called()
+
     def test_normalizar_anim_id_wrap_256(self) -> None:
         cli = MagicMock()
         cli._next_anim_id = 256
@@ -771,9 +939,11 @@ class TestMotorCozmo(unittest.TestCase):
         self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
 
     @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.conexao.cozmo_rota_ap", return_value=False)
     @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)
     @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
-    def test_detectar_cozmo01_rx_morto(self, _hold, _rx, _ping) -> None:
+    def test_detectar_cozmo01_rx_morto(self, _hold, _rx, _rota, _ping) -> None:
+        motor._ultimo_exibir_clip_em = 0.0
         motor._rx_off_desde = time.monotonic() - 12.0
         cli = MagicMock()
         self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
@@ -782,8 +952,30 @@ class TestMotorCozmo(unittest.TestCase):
         motor._rx_off_desde = 0.0
 
     @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.conexao.cozmo_rota_ap", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
+    def test_detectar_cozmo01_rx_morto_preserva_frame_oled_recente(
+        self,
+        _hold,
+        _rx,
+        _rota,
+        _ping,
+    ) -> None:
+        motor._rx_off_desde = time.monotonic() - 30.0
+        motor._ultimo_exibir_clip_em = time.monotonic()
+        cli = MagicMock()
+        with patch.dict(os.environ, {"COZMO_BASE_OLED_TX_RX_STALL_GRACE_S": "180"}):
+            self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
+        motor._ultimo_exibir_clip_em = time.monotonic() - 120.0
+        self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
+        motor._rx_off_desde = 0.0
+        motor._ultimo_exibir_clip_em = 0.0
+
+    @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
     @patch("cozmo_companion.core.motor_cozmo._sequencia_recuperar_cozmo01", return_value=True)
-    def test_recuperar_cozmo01_respeita_cooldown(self, seq, _ping) -> None:
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=True)
+    def test_recuperar_cozmo01_respeita_cooldown(self, _rx, seq, _ping) -> None:
         cli = MagicMock()
         monitor = MagicMock()
         motor._ultimo_recuperar_cozmo01 = time.monotonic()
@@ -791,6 +983,20 @@ class TestMotorCozmo(unittest.TestCase):
         seq.assert_not_called()
         self.assertTrue(motor.recuperar_cozmo01_auto(cli, monitor, forcar=True))
         seq.assert_called_once()
+
+    @patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._sequencia_recuperar_cozmo01", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)
+    def test_recuperar_cozmo01_falha_nao_reseta_medidores(self, _rx, _seq, _ping) -> None:
+        cli = MagicMock()
+        monitor = MagicMock()
+        medidor = MagicMock()
+        motor._ultimo_recuperar_cozmo01 = 0.0
+        self.assertFalse(
+            motor.recuperar_cozmo01_auto(cli, monitor, medidor, forcar=True)
+        )
+        monitor.sincronizar.assert_not_called()
+        medidor.reset.assert_not_called()
 
     def test_segurar_hold_stack(self) -> None:
         motor._base_oled_loop_hold_ate = 0.0
@@ -822,22 +1028,37 @@ class TestMotorCozmo(unittest.TestCase):
             motor.pode_tocar_anim_direto(cli, fila_ocupada=False, falando=False)
         )
 
+    @patch("cozmo_companion.core.motor_cozmo._base_oled_anim_loop_ativo", return_value=False)
     @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
-    @patch("cozmo_companion.core.motor_cozmo._exibir_clip_base", return_value=True)
-    def test_tocar_clip_base_seguro(self, exibir, _charger) -> None:
+    @patch("cozmo_companion.core.motor_cozmo._iniciar_keeper_clip_oled_base", return_value=True)
+    def test_tocar_clip_base_seguro(self, keeper, _charger, _loop) -> None:
         cli = MagicMock()
         self.assertTrue(motor.tocar_clip_base_seguro(cli, "CodeLabBlink"))
-        exibir.assert_called_once()
+        keeper.assert_called_once_with(cli, "CodeLabBlink")
         self.assertFalse(motor.tocar_clip_base_seguro(cli, "DriveStuckOffCharger"))
 
     @patch("cozmo_companion.core.motor_cozmo.tocar_clip_base_seguro", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo._charger_usa_keeper", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo._base_oled_anim_loop_ativo", return_value=True)
     @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
-    def test_animar_grupo_base_usa_ppclip(self, _charger, tocar) -> None:
+    def test_animar_grupo_base_usa_ppclip(self, _charger, _loop, _keeper, tocar) -> None:
         cli = MagicMock()
         self.assertTrue(
             animar_grupo(cli, "CodeLabBlink", na_base=True, procedural_antes=True)
         )
         tocar.assert_called_once_with(cli, "CodeLabBlink")
+
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_usa_charger", return_value=True)
+    @patch("cozmo_companion.core.motor_cozmo.modo_charger_oled")
+    @patch("cozmo_companion.core.motor_cozmo._base_oled_anim_loop_ativo", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo._clip_loop_vivo", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.base_oled_loop_segurado", return_value=False)
+    def test_religar_pos_notif_loop_off_usa_keeper(
+        self, _hold, _clip, _loop, modo, _charger
+    ) -> None:
+        cli = MagicMock()
+        motor.religar_base_oled_pos_notif(cli)
+        modo.assert_called_once_with(cli, forcar=True)
 
 
 class TestOledAntiEstatico(unittest.TestCase):

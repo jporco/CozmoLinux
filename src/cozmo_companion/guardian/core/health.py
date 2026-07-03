@@ -20,6 +20,9 @@ _SESSAO_RE = re.compile(
 _ERRO_RE = re.compile(
     r"(sem resposta UDP|Conexão perdida|Falha ao conectar|UDP saturado|COZMO 01)"
 )
+_HEARTBEAT_RE = re.compile(
+    r"(Governador .*rx=OK|Base OLED (keeper TX|: variar clip|: keeper|: vivo)|Vivo preso_na_base=True)"
+)
 
 
 def _parse_ts(linha: str) -> float | None:
@@ -150,6 +153,19 @@ def _parse_sessao(linha: str, ts: float | None) -> SessaoLog | None:
     )
 
 
+def _sessao_com_idade(sessao: SessaoLog, idade_s: float) -> SessaoLog:
+    return SessaoLog(
+        estado=sessao.estado,
+        ping=sessao.ping,
+        bateria_v=sessao.bateria_v,
+        rx=sessao.rx,
+        tx=sessao.tx,
+        ratio=sessao.ratio,
+        linha=sessao.linha,
+        idade_s=idade_s,
+    )
+
+
 def ler_log(
     caminho: Path,
     *,
@@ -168,11 +184,17 @@ def ler_log(
         try:
             bloco = _tail_linhas(caminho, max_linhas)
             ultimo_ok = corte
+            ultimo_heartbeat: float | None = None
             for linha in bloco:
                 if "Companheiro vivo." in linha or "PyCozmo conectado" in linha:
                     ts = _parse_ts(linha)
                     if ts:
                         ultimo_ok = ts
+                if _HEARTBEAT_RE.search(linha):
+                    ts = _parse_ts(linha)
+                    if ts:
+                        ultimo_heartbeat = ts
+                        ultimo_ok = max(ultimo_ok, ts)
             corte_erros = max(corte, ultimo_ok)
 
             for linha in reversed(bloco):
@@ -194,6 +216,11 @@ def ler_log(
                         na_base = True
                     if "saiu da base" in linha.lower():
                         na_base = False
+            if sessao is not None and ultimo_heartbeat is not None:
+                sessao = _sessao_com_idade(
+                    sessao,
+                    max(0.0, agora - ultimo_heartbeat),
+                )
         except OSError:
             pass
 

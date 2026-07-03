@@ -37,6 +37,47 @@ class TestCompanionBase(unittest.TestCase):
         with patch.dict(os.environ, {"CARINHO_LINK_GRACE_S": "5"}):
             self.assertFalse(Companion._carinho_recente(c))
 
+    def test_carinho_cabeca_externa_com_keeper_base(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._falando = False
+        c._pos_tts_ativo = MagicMock(return_value=False)
+        c._fila = MagicMock()
+        c._fila.livre = True
+        c._na_base_efetivo = MagicMock(return_value=True)
+        c.cli = MagicMock()
+        c.cli.anim_controller.playing_animation = False
+        c.cli.anim_controller.playing_audio = False
+        c.cli.anim_controller.queue.is_empty.return_value = True
+        with patch("cozmo_companion.core.motor_cozmo.keeper_base_ativo", return_value=True):
+            self.assertTrue(Companion._carinho_cabeca_externa(c))
+
+    def test_carinho_base_nao_dispara_tts_por_padrao(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._vida = MagicMock()
+        c._vida.dormindo = False
+        c._na_base_efetivo = MagicMock(return_value=True)
+        c._periodo_quieto_ativo = MagicMock(return_value=False)
+        c._falando = False
+        c._pos_tts_ativo = MagicMock(return_value=False)
+        c._ultimo_carinho = 0.0
+        c._detector_escuro = MagicMock()
+        c._monitor_rx = MagicMock()
+        c._gov = MagicMock()
+        c._vivo = MagicMock()
+        c._carinho = MagicMock()
+        c._fila = MagicMock()
+        c._base_usa_rosto_vivo = MagicMock(return_value=True)
+        c.cli = MagicMock()
+        with patch.dict(os.environ, {"CARINHO_TTS_NA_BASE": "0"}):
+            with patch("cozmo_companion.core.charger.carga_prioritaria", return_value=False):
+                with patch("cozmo_companion.core.companion.audio_na_base", return_value=True):
+                    with patch(
+                        "cozmo_companion.core.motor_cozmo.manter_oled_base_ativo"
+                    ) as manter:
+                        Companion._ao_carinho_cabeca(c)
+        c._fila.enviar_sinal_tts.assert_not_called()
+        manter.assert_called_once_with(c.cli)
+
     def test_stt_idle_rms_na_base(self) -> None:
         c = MagicMock(spec=Companion)
         c.ouvinte = MagicMock()
@@ -81,3 +122,20 @@ class TestCompanionBase(unittest.TestCase):
                 side_effect=AssertionError("recursao"),
             ):
                 self.assertTrue(Companion._na_base_efetivo(c))
+
+    def test_wifi_recuperado_reabre_udp_sem_sincronizar_cliente_velho(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._reconectar_sessao_udp = MagicMock(return_value=True)
+        c._base = MagicMock()
+        c._recuperador = MagicMock()
+        with patch("cozmo_companion.core.charger.definir_oled_preso_na_base") as definir:
+            self.assertTrue(Companion._reabrir_udp_apos_wifi(c))
+        c._reconectar_sessao_udp.assert_called_once_with(
+            silencioso=False,
+            forcado=True,
+            cozmo01=True,
+        )
+        self.assertTrue(c._base._preso_na_base)
+        self.assertFalse(c._base._mesa_escolhida)
+        definir.assert_called_once_with(True)
+        self.assertEqual(c._recuperador.stall_consecutivo, 0)

@@ -161,15 +161,26 @@ class CicloVida:
             return False
         return time.monotonic() < self._camera_ate
 
-    def abrir_camera_curta(self, segundos: float = 14.0, *, na_base: bool = True) -> bool:
+    def abrir_camera_curta(
+        self,
+        cli: "pycozmo.Client",
+        segundos: float = 14.0,
+        *,
+        na_base: bool = True,
+    ) -> bool:
         """Abre janela curta de câmera (wake word, agenda)."""
         if na_base and os.environ.get("COZMO_FACE_BASE", "0") != "1":
             return False
         agora = time.monotonic()
         dur = max(4.0, min(segundos, float(os.environ.get("BASE_CAM_ON_MAX_S", "12"))))
+        if na_base:
+            _motor.pausar_base_oled_para_texto(dur + 1.5, cli)
         if self.face.iniciar_busca(dur, na_base=na_base):
             self._camera_ate = max(self._camera_ate, agora + dur)
             return True
+        if na_base:
+            _motor.liberar_base_oled_loop_hold(motivo="camera_falhou")
+            _motor.ligar_oled_base(cli, forcar=True, preso_na_base=True)
         return False
 
     def _marcar_acordado(
@@ -237,6 +248,7 @@ class CicloVida:
             )
             if os.environ.get("WAKE_CAMERA_BASE", "0") == "1":
                 self.abrir_camera_curta(
+                    cli,
                     float(os.environ.get("BASE_CAM_ON_S", "10")),
                     na_base=True,
                 )
@@ -461,8 +473,12 @@ class CicloVida:
         _motor.definir_modo_sono_oled(True)
         rotulo = "ppclip sleep"
         if SONO_TELA_ESCURA:
+            # Sono profundo: nenhuma animação pode sobrescrever o quadro preto.
+            _motor.apagar_oled_para_sono(cli)
             self.tela.escurecer()
+            self.tela.manter_escuro(direct=True)
             self._tela_sono_ativa = False
+            rotulo = "OLED apagado"
         elif _motor.sono_oled_usa_texto():
             try:
                 _motor.ativar_sono_oled_texto(cli)
@@ -601,7 +617,11 @@ class CicloVida:
 
     def _reforcar_sono(self, cli: "pycozmo.Client") -> None:
         """Já dormindo — reaplica ppclip sleep (ou zZz legado)."""
-        if _motor.sono_oled_usa_texto():
+        if SONO_TELA_ESCURA:
+            _motor.apagar_oled_para_sono(cli)
+            self.tela.escurecer()
+            self.tela.manter_escuro(direct=True)
+        elif _motor.sono_oled_usa_texto():
             try:
                 if not _motor.sono_oled_texto_ativo():
                     _motor.ativar_sono_oled_texto(cli)
@@ -721,6 +741,8 @@ class CicloVida:
         if self._camera_ate > 0 and not self.face.ativo:
             # Câmera cortada cedo (carga, governador, quieto) — não reabrir em loop.
             self._camera_ate = 0.0
+            _motor.liberar_base_oled_loop_hold(motivo="camera_encerrada_cedo")
+            _motor.ligar_oled_base(cli, forcar=True, preso_na_base=preso_na_base)
             self._proxima_camera = agora + random.uniform(off_min, off_max)
             logger.info(
                 "Câmera base encerrada cedo — próxima em ~%.0f min",
@@ -737,15 +759,20 @@ class CicloVida:
                 self._proxima_camera = agora + random.uniform(off_min, off_max)
             else:
                 dur = random.uniform(on_s, on_max)
+                _motor.pausar_base_oled_para_texto(dur + 1.5, cli)
                 if self.face.iniciar_busca(dur, na_base=True):
                     self._camera_ate = agora + dur
                     self._proxima_camera = agora + dur + random.uniform(off_min, off_max)
                     logger.info("Janela câmera base (~%.0fs)", dur)
                 else:
+                    _motor.liberar_base_oled_loop_hold(motivo="camera_falhou")
+                    _motor.ligar_oled_base(cli, forcar=True, preso_na_base=preso_na_base)
                     self._proxima_camera = agora + random.uniform(off_min, off_max)
         elif self.face.ativo and agora > self._camera_ate > 0:
             self.face.desligar()
             self._camera_ate = 0.0
+            _motor.liberar_base_oled_loop_hold(motivo="camera_concluida")
+            _motor.ligar_oled_base(cli, forcar=True, preso_na_base=preso_na_base)
             self._proxima_camera = agora + random.uniform(off_min, off_max)
             logger.info(
                 "Câmera base off — próxima em ~%.0f min",

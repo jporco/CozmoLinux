@@ -132,6 +132,21 @@ class TestGovernador(unittest.TestCase):
         self.assertNotEqual(t.fase, FaseLink.VERMELHO)
         self.assertTrue(t.rx_ok)
 
+    @patch("cozmo_companion.core.governador.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.governador.cozmo_rota_ap", return_value=True)
+    @patch("cozmo_companion.core.governador.conexao_ok", return_value=True)
+    @patch("cozmo_companion.core.governador.ratio_udp", return_value=0.5)
+    def test_drx_novo_mantem_rx_ok(self, _r, _ok, _rota, _ping) -> None:
+        g = GovernadorCozmo()
+        rx = MonitorRx()
+        cli = MagicMock()
+        with patch.object(g._medidor, "amostra", return_value=(343, 291, 0.85)):
+            with patch.object(rx, "tick", return_value=False):
+                t = g.tick(cli, monitor_rx=rx, busy=False, quieto=False)
+        self.assertTrue(t.rx_ok)
+        self.assertNotEqual(t.fase, FaseLink.VERMELHO)
+        self.assertFalse(t.pedir_recuperar)
+
     @patch("cozmo_companion.core.governador.cozmo_alcanavel", return_value=False)
     @patch("cozmo_companion.core.governador.cozmo_rota_ap", return_value=False)
     @patch("cozmo_companion.core.governador.cozmo_ssid_visivel", return_value=False)

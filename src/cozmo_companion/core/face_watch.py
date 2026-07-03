@@ -79,6 +79,8 @@ class FaceWatch:
         self._detector_luz: object | None = None
         self._event_sink: EventSink | None = None
         self._prev_motion_frame: np.ndarray | None = None
+        self._motion_hits = 0
+        self._frames_janela = 0
         self._ultimo_face_lost_emit = 0.0
 
         if _CV2:
@@ -118,6 +120,12 @@ class FaceWatch:
     def ligar(self, na_base: bool = False, *, forcar: bool = False) -> None:
         if (
             na_base
+            and os.environ.get("COZMO_FACE_BASE", "0") != "1"
+            and os.environ.get("COZMO_FACE_BASE_FORCE", "0") != "1"
+        ):
+            return
+        if (
+            na_base
             and not forcar
             and os.environ.get("COZMO_FACE_BASE", "0") != "1"
             and os.environ.get("COZMO_ESCURO_AUTO", "1") != "1"
@@ -129,6 +137,9 @@ class FaceWatch:
         self.cli.enable_camera(True, color=False)
         self.ativo = True
         self._na_base = na_base
+        self._prev_motion_frame = None
+        self._motion_hits = 0
+        self._frames_janela = 0
         logger.info("Câmera ligada (%s).", "base" if na_base else "mesa")
 
     def vincular_detector_luz(self, detector: object | None) -> None:
@@ -147,7 +158,15 @@ class FaceWatch:
 
     def iniciar_amostra_luz(self, duracao_s: float, *, na_base: bool = True) -> bool:
         """Câmera só para luminância (sem busca de rosto)."""
+        if (
+            na_base
+            and os.environ.get("COZMO_ESCURO_AUTO", "1") != "1"
+            and os.environ.get("COZMO_FACE_BASE_FORCE", "0") != "1"
+        ):
+            return False
         self.ligar(na_base=na_base, forcar=True)
+        if not self.ativo:
+            return False
         agora = time.monotonic()
         self._amostra_luz_ate = agora + max(2.0, duracao_s)
         self._busca_ativa = False
@@ -313,6 +332,7 @@ class FaceWatch:
         self._analisar_imagem(imagem, luz_apenas=luz_apenas)
 
     def _analisar_imagem(self, imagem: Image.Image, *, luz_apenas: bool = False) -> None:
+        self._frames_janela = getattr(self, "_frames_janela", 0) + 1
         cinza = np.array(imagem.convert("L"))
         media_luz = float(cinza.mean()) if cinza.size else 255.0
         self._emitir_evento(
@@ -386,8 +406,15 @@ class FaceWatch:
             return
         diff = float(np.mean(np.abs(pequeno - self._prev_motion_frame)))
         self._prev_motion_frame = pequeno.copy()
+        if getattr(self, "_frames_janela", 4) <= 3:
+            return
         lim = float(os.environ.get("FACE_MOTION_DIFF", "18"))
         if diff >= lim:
+            self._motion_hits = getattr(self, "_motion_hits", 0) + 1
+        else:
+            self._motion_hits = max(0, getattr(self, "_motion_hits", 0) - 1)
+        if self._motion_hits >= 2:
+            self._motion_hits = 0
             self._emitir_evento(
                 PerceptionEvent(
                     kind=PerceptionEventKind.MOTION_HINT,

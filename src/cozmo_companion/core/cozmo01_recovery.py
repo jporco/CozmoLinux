@@ -54,6 +54,7 @@ class RecuperadorCozmo01:
         self.stall_consecutivo = 0
         self.cozmo01_falhas = 0
         self._stall_desde = 0.0
+        self._ultimo_pulso_stall = 0.0
 
     def atualizar_stall(
         self,
@@ -101,10 +102,13 @@ class RecuperadorCozmo01:
         from cozmo_companion.core.motor_cozmo import (
             cortar_flood_udp_base,
             detectar_cozmo01_suspeito,
+            oled_frame_recente,
+            oled_charger_vivo,
             ping_sessao_base,
             pulso_sync_base,
             recuperar_cozmo01_auto,
             rx_link_ok,
+            rx_morto_s,
         )
 
         drx, dtx, _ = medidor.amostra(cli)
@@ -122,10 +126,52 @@ class RecuperadorCozmo01:
         max_stall_s = float(os.environ.get("COZMO01_STALL_MAX_S", "10"))
         emerg_min_s = float(os.environ.get("COZMO01_EMERG_MIN_S", "4"))
 
-        if drx <= 0 and dtx >= prevent_dtx_base():
+        # Throttle dos pulsos de recuperação: floodar ping/sync a cada tick afoga o
+        # firmware e mantém o RX morto (captura tcpdump: 120 pkt/s sustentado). Um
+        # pulso esparso deixa o link drenar e o RX volta sem reset.
+        intervalo_pulso = float(os.environ.get("COZMO_BASE_STALL_PULSO_S", "1.5"))
+        pode_pulsar = agora - self._ultimo_pulso_stall >= intervalo_pulso
+
+        if drx <= 0 and dtx >= prevent_dtx_base() and pode_pulsar:
+            self._ultimo_pulso_stall = agora
             cortar_flood_udp_base(cli)
             pulso_sync_base(cli, forcado=True)
             ping_sessao_base(cli)
+
+        rx_morto = rx_morto_s()
+        keeper_dead_max = float(os.environ.get("COZMO01_KEEPER_RX_DEAD_MAX_S", "180"))
+        if (
+            not g.rx_ok
+            and (oled_charger_vivo(cli) or oled_frame_recente())
+            and rx_morto < keeper_dead_max
+        ):
+            if agora - self._ultimo_pulso_stall >= intervalo_pulso:
+                self._ultimo_pulso_stall = agora
+                pulso_sync_base(cli, forcado=True)
+                ping_sessao_base(cli)
+            return ResultadoRecuperacao(in_place=True)
+
+        # Failsafe: RX morto contínuo (relógio do tick principal, NÃO zerado pelas
+        # preventivas) acima do teto → reset duro. Sem isso o flood fica preso minutos
+        # quando uma preventiva "recupera" e zera os contadores a cada tick.
+        teto_morto = float(os.environ.get("COZMO01_RX_DEAD_MAX_S", "12"))
+        if (
+            not g.rx_ok
+            and rx_morto >= teto_morto
+            and permitir_reset_udp_cozmo01()
+            and agora - ultimo_reconnect_udp >= self._cooldown_reset(emergencia=True)
+        ):
+            logger.warning(
+                "COZMO 01 — reset UDP (RX morto %.0fs dtx=%d rx=STALL)",
+                rx_morto,
+                dtx,
+            )
+            if reconnect_udp():
+                self.stall_consecutivo = 0
+                self.cozmo01_falhas = 0
+                self._stall_desde = 0.0
+                return ResultadoRecuperacao(reset_udp=True)
+            return ResultadoRecuperacao()
 
         if (busy or quieto) and not emergencia and stall_s < max_stall_s:
             return ResultadoRecuperacao()

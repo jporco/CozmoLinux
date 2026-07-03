@@ -713,6 +713,15 @@ class FilaCozmo:
                 return
             self._estado = EstadoFila.IDLE
             self._oled_fim = 0.0
+            if self.na_base() and not self._fila:
+                try:
+                    from cozmo_companion.core.motor_cozmo import liberar_base_oled_loop_hold
+
+                    liberar_base_oled_loop_hold(motivo="fim_oled_fila")
+                except Exception:
+                    pass
+                self._restaurar_rosto_pos_item(cli)
+                self._procedural_desligado = False
 
         if self._estado != EstadoFila.IDLE:
             return

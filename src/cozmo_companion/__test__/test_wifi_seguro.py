@@ -79,7 +79,11 @@ def test_reconectar_wifi_offline_nao_executa_script(mock_run, _ssid, _ping, _rot
 
 
 @patch("cozmo_companion.core.conexao.subprocess.run")
-def test_wlan0_preso_detecta_connecting(mock_run):
+def test_wlan0_connecting_nao_e_preso(mock_run):
+    """Handshake em progresso NUNCA é 'preso' — derrubar aqui mata a conexão."""
+    import cozmo_companion.core.conexao as conexao
+
+    conexao._wlan0_preso_desde = 0.0
     mock_run.return_value.returncode = 0
     mock_run.return_value.stdout = (
         "GENERAL.STATE:50 (connecting (configuring))\n"
@@ -87,4 +91,24 @@ def test_wlan0_preso_detecta_connecting(mock_run):
     )
     with patch("cozmo_companion.core.conexao.cozmo_rota_ap", return_value=False):
         with patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=False):
-            assert wlan0_preso_cozmo() is True
+            assert wlan0_preso_cozmo() is False
+
+
+@patch("cozmo_companion.core.conexao.subprocess.run")
+def test_wlan0_preso_so_apos_carencia(mock_run):
+    """Conectado a Cozmo_* sem rota: só vira 'preso' após carência contínua."""
+    import cozmo_companion.core.conexao as conexao
+
+    conexao._wlan0_preso_desde = 0.0
+    mock_run.return_value.returncode = 0
+    mock_run.return_value.stdout = (
+        "GENERAL.STATE:100 (connected)\n"
+        "GENERAL.CONNECTION:Cozmo_31CE41\n"
+    )
+    with patch("cozmo_companion.core.conexao.cozmo_rota_ap", return_value=False):
+        with patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=False):
+            with patch.dict("os.environ", {"COZMO_WLAN0_PRESO_GRACA_S": "15"}, clear=False):
+                with patch("cozmo_companion.core.conexao.time.monotonic", return_value=1000.0):
+                    assert wlan0_preso_cozmo() is False  # arma o contador
+                with patch("cozmo_companion.core.conexao.time.monotonic", return_value=1020.0):
+                    assert wlan0_preso_cozmo() is True  # 20s > carência

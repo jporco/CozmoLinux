@@ -618,6 +618,12 @@ class Companion(CompanionVoz):
             label = "Livre" if getattr(self._base, "mesa_escolhida", False) else "Base"
             if safety.effective_base:
                 self._mesa.set_bloqueado(True)
+                from pycozmo import robot as _robot
+
+                try:
+                    self.cli.set_lift_height(_robot.MIN_LIFT_HEIGHT.mm)
+                except Exception as exc:
+                    logger.debug("Falha ao baixar braço na troca p/ Base: %s", exc)
                 from cozmo_companion.core.motor_cozmo import ligar_oled_base
 
                 ligar_oled_base(self.cli, forcar=True, preso_na_base=safety.effective_base)

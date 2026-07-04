@@ -116,10 +116,14 @@ class Companion(CompanionVoz):
 
         self._motion_reactions = MotionReactionDetector(self._on_motion_reaction)
         self._ultima_reacao_sensor = 0.0
+        self._ultimo_evento_percepcao = 0.0
         self._espirito = Espirito()
         self._mesa = MesaSegura(cli)
         self._explorador = ExploradorMesa(
-            self._mesa, obstaculo_frontal=lambda: self._face.caminho_bloqueado
+            self._mesa,
+            obstaculo_frontal=lambda: self._face.caminho_bloqueado,
+            evento_recente=lambda: time.monotonic() - self._ultimo_evento_percepcao
+            < float(os.environ.get("MESA_EVENTO_RECENTE_S", "8")),
         )
         self._pet_livre = PetLivre()
         from cozmo_companion.core.leds import LuzesBackpack
@@ -308,6 +312,11 @@ class Companion(CompanionVoz):
         if evento.kind == PerceptionEventKind.LIGHT_LEVEL:
             return
         self._pet_livre.registrar_evento(evento)
+        if evento.kind in (
+            PerceptionEventKind.FACE_SEEN,
+            PerceptionEventKind.MOTION_HINT,
+        ):
+            self._ultimo_evento_percepcao = time.monotonic()
         if evento.kind == PerceptionEventKind.FACE_LOST:
             return
         if self._vida.dormindo or self._fila.ocupada or self._falando or self._llm_ocupado:

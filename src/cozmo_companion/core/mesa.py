@@ -198,9 +198,11 @@ class ExploradorMesa:
         segura: MesaSegura,
         *,
         obstaculo_frontal: Callable[[], bool] | None = None,
+        evento_recente: Callable[[], bool] | None = None,
     ):
         self._segura = segura
         self._obstaculo_frontal = obstaculo_frontal
+        self._evento_recente = evento_recente
         self._estado = "off"
         self._ate = 0.0
         self._proxima = time.monotonic() + random.uniform(
@@ -210,6 +212,7 @@ class ExploradorMesa:
         self._duracao_andar = 0.0
         self._ultima_emergencia = 0.0
         self._desde_drive = 0.0
+        self._pos_emergencia = False
 
     @property
     def explorando(self) -> bool:
@@ -248,6 +251,7 @@ class ExploradorMesa:
         if agora - self._ultima_emergencia < MESA_EMERG_COOLDOWN:
             return
         self._ultima_emergencia = agora
+        self._pos_emergencia = True
         self._parar(cli)
         grupos = set(cli.animation_groups.keys())
         if "ReactToCliff" in grupos:
@@ -255,7 +259,7 @@ class ExploradorMesa:
         elif "ReactToPokeStartled" in grupos:
             cli.play_anim_group("ReactToPokeStartled")
         self._estado = "recuando"
-        self._ate = agora + 0.4
+        self._ate = agora + random.uniform(0.3, 0.6)
         cli.drive_wheels(-MESA_RECUO_VEL, -MESA_RECUO_VEL)
         logger.info("Recuando (%s).", motivo)
 
@@ -283,6 +287,19 @@ class ExploradorMesa:
         so_cabeca = self._segura.rodas_travadas(cli)
         if so_cabeca:
             acao = random.choice(("pausa", "olhar", "olhar", "pausa", "olhar"))
+        elif self._pos_emergencia:
+            # Acabou de recuar de algo — para e olha em volta antes de seguir,
+            # em vez de já sair andando de novo na mesma direção.
+            self._pos_emergencia = False
+            acao = "olhar"
+        elif self._evento_recente is not None and self._evento_recente():
+            # Viu/ouviu algo há pouco — maior chance de parar pra "investigar"
+            # em vez de continuar o passeio cego.
+            acao = random.choices(
+                ("pausa", "olhar", "andar", "girar"),
+                weights=(0.6, 4.0, 2.0, 1.0),
+                k=1,
+            )[0]
         else:
             acao = random.choices(
                 ("pausa", "olhar", "andar", "girar"),
@@ -327,7 +344,7 @@ class ExploradorMesa:
         else:
             self._estado = "andar"
             self._duracao_andar = random.uniform(
-                *_faixa("MESA_ANDAR_MIN_S", "MESA_ANDAR_MAX_S", 0.45, 1.0)
+                *_faixa("MESA_ANDAR_MIN_S", "MESA_ANDAR_MAX_S", 0.6, 2.2)
             )
             self._ate = time.monotonic() + self._duracao_andar
             self._drive(cli, MESA_VEL, MESA_VEL)
@@ -388,8 +405,10 @@ class ExploradorMesa:
             if agora >= self._ate:
                 self._parar(cli)
                 self._estado = "girar"
+                # Faixa larga (até quase meia-volta) — girar sempre o mesmo
+                # tanto fazia ele voltar pro mesmo obstáculo em pouco tempo.
                 self._ate = agora + random.uniform(
-                    *_faixa("MESA_GIRO_RECUO_MIN_S", "MESA_GIRO_RECUO_MAX_S", 0.35, 0.75)
+                    *_faixa("MESA_GIRO_RECUO_MIN_S", "MESA_GIRO_RECUO_MAX_S", 0.4, 1.3)
                 )
                 g = random.choice((-1, 1))
                 self._drive(cli, MESA_VEL * g, -MESA_VEL * g)

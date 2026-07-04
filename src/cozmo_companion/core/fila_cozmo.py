@@ -183,7 +183,11 @@ class FilaCozmo:
     def _reservar_gov(self, item: ItemFila) -> bool:
         prio = item.prioridade
         if item.tipo == TipoItem.ANIM:
-            return self.gov.reservar("anim", prioridade=prio)
+            # tocar_grupo (Companion._tocar_grupo) já reserva o orçamento "anim"
+            # no despacho — reservar de novo aqui fazia a 2ª reserva cair sempre
+            # dentro do intervalo mínimo da 1ª e o item ser descartado como
+            # "robô ocupado" mesmo livre. O dispatch já é o gate real.
+            return True
         if item.tipo == TipoItem.SOM:
             return self.gov.reservar("anim", prioridade=prio)
         if item.tipo == TipoItem.TTS:

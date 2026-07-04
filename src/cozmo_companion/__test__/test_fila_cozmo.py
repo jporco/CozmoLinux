@@ -346,9 +346,11 @@ class TestFilaCozmo(unittest.TestCase):
         self.assertEqual(len(self.fila._fila), 0)
 
     @patch.object(GovernadorCozmo, "reservar", return_value=False)
-    def test_sem_budget_nao_enfileira(self, _res: MagicMock) -> None:
-        self.assertFalse(self.fila.enviar_anim(("X",)))
-        self.assertEqual(len(self.fila._fila), 0)
+    def test_sem_budget_ainda_enfileira_anim(self, _res: MagicMock) -> None:
+        """ANIM não reserva no enqueue — quem reserva de verdade é tocar_grupo
+        no despacho (2 reservas na mesma janela sempre derrubava a 2ª)."""
+        self.assertTrue(self.fila.enviar_anim(("X",)))
+        self.assertEqual(len(self.fila._fila), 1)
 
 
 if __name__ == "__main__":

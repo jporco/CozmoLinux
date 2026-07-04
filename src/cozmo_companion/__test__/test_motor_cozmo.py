@@ -1062,6 +1062,57 @@ class TestMotorCozmo(unittest.TestCase):
 
 
 class TestOledAntiEstatico(unittest.TestCase):
+    def test_oled_hz_reduz_por_fase(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "COZMO_OLED_HZ_VERDE": "4",
+                "COZMO_OLED_HZ_AMARELO": "3",
+                "COZMO_OLED_HZ_LARANJA": "1",
+                "COZMO_OLED_HZ_VERMELHO": "0.2",
+            },
+        ):
+            self.assertEqual(motor.oled_hz_para_fase("verde", 4), 4)
+            self.assertEqual(motor.oled_hz_para_fase("amarelo", 4), 3)
+            self.assertEqual(motor.oled_hz_para_fase("laranja", 4), 1)
+            self.assertEqual(motor.oled_hz_para_fase("vermelho", 4), 0.2)
+
+    def test_oled_fase_degrada_imediato_para_keeper(self) -> None:
+        cli = MagicMock()
+        motor._oled_fase_aplicada = "verde"
+        motor._oled_fase_observada = "verde"
+        with (
+            patch.object(motor, "modo_sono_oled_ativo", return_value=False),
+            patch.object(motor, "_parar_loop_clip_base") as parar,
+            patch.object(motor, "_parar_display_keeper"),
+            patch.object(motor, "_iniciar_display_keeper") as iniciar,
+            patch.object(motor, "_keeper_clip_hz", return_value=4.0),
+        ):
+            self.assertTrue(motor.ajustar_oled_fase_link(cli, "laranja"))
+        parar.assert_called_once()
+        iniciar.assert_called_once()
+        self.assertEqual(iniciar.call_args.args[1], 1.0)
+        motor._oled_fase_aplicada = "verde"
+        motor._oled_fase_observada = "verde"
+
+    def test_watchdog_anim_presa_cancela_uma_vez(self) -> None:
+        cli = MagicMock()
+        cli.anim_controller.playing_animation = True
+        cli.anim_controller.playing_audio = False
+        agora = time.monotonic()
+        novo, cancelou = motor.vigiar_anim_presa(
+            cli, agora - 10.0, limite_s=2.0
+        )
+        self.assertEqual(novo, 0.0)
+        self.assertTrue(cancelou)
+        cli.cancel_anim.assert_called_once_with()
+
+    def test_watchdog_anim_livre_zera_timer(self) -> None:
+        cli = MagicMock()
+        cli.anim_controller.playing_animation = False
+        cli.anim_controller.playing_audio = False
+        self.assertEqual(motor.vigiar_anim_presa(cli, 123.0), (0.0, False))
+
     def test_oled_estatico_demais(self) -> None:
         cli = MagicMock()
         cli.anim_controller.playing_animation = True

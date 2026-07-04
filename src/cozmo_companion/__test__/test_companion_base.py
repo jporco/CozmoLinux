@@ -38,7 +38,7 @@ class TestCompanionBase(unittest.TestCase):
         with patch.dict(os.environ, {"CARINHO_LINK_GRACE_S": "5"}):
             self.assertFalse(Companion._carinho_recente(c))
 
-    def test_carinho_cabeca_externa_com_keeper_base(self) -> None:
+    def test_keeper_base_nao_bloqueia_carinho(self) -> None:
         c = MagicMock(spec=Companion)
         c._falando = False
         c._pos_tts_ativo = MagicMock(return_value=False)
@@ -48,13 +48,14 @@ class TestCompanionBase(unittest.TestCase):
         c._ctx_anim = MagicMock(return_value=ContextoAnim.BASE)
         c._fila.livre = True
         c._na_base_efetivo = MagicMock(return_value=True)
+        c._face = MagicMock(buscando=False, rastreando=False)
         c.cli = MagicMock()
         c.cli.animation_groups = {"ReactToPokeReaction": None, "InterestedFace": None}
         c.cli.anim_controller.playing_animation = False
         c.cli.anim_controller.playing_audio = False
         c.cli.anim_controller.queue.is_empty.return_value = True
         with patch("cozmo_companion.core.motor_cozmo.keeper_base_ativo", return_value=True):
-            self.assertTrue(Companion._carinho_cabeca_externa(c))
+            self.assertFalse(Companion._carinho_cabeca_externa(c))
 
     def test_carinho_base_nao_dispara_tts_por_padrao(self) -> None:
         c = MagicMock(spec=Companion)

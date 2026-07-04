@@ -34,13 +34,13 @@ def tx_saudavel_limite() -> int:
     return int(
         os.environ.get(
             "GOV_PPCLIP_DTX_OK",
-            os.environ.get("COZMO_BASE_TX_STALL", "240"),
+            str(network_tuning().base_tx_stall),
         )
     )
 
 
 def stall_tx_base() -> int:
-    return int(os.environ.get("COZMO_BASE_TX_STALL", "280"))
+    return network_tuning().base_tx_stall
 
 
 def prevent_dtx_base() -> int:
@@ -240,3 +240,4 @@ class RecuperadorCozmo01:
             return ResultadoRecuperacao(in_place=True)
 
         return ResultadoRecuperacao()
+from cozmo_companion.core.config import network_tuning

@@ -9,7 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from cozmo_companion.guardian.core.health import SessaoLog, Saude, ler_log, sessao_morta
+from cozmo_companion.guardian.core.health import (
+    SessaoLog,
+    Saude,
+    ler_json,
+    ler_log,
+    ler_saude,
+    sessao_morta,
+)
 from cozmo_companion.guardian.core.policy import AcaoGuardian, EstadoGuardian, decidir
 
 
@@ -18,6 +25,35 @@ def _ts(offset_s: float = 0) -> str:
 
 
 class TestHealth(unittest.TestCase):
+    def test_json_e_fonte_primaria(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "data").mkdir()
+            (root / "data" / "cozmo-saude.json").write_text(
+                '{"ts":"' + datetime.now().isoformat(timespec="seconds")
+                + '","rx":500,"tx":550,"ratio_acum":1.1,'
+                '"bateria_v":4.2,"estado":"CONNECTED","rx_ok":true,'
+                '"preso_base":true}',
+                encoding="utf-8",
+            )
+            log = root / "cozmo-companheiro.log"
+            log.write_text("log deliberadamente incompatível", encoding="utf-8")
+            with (
+                patch("cozmo_companion.guardian.core.health.servico_ativo", return_value=True),
+                patch("cozmo_companion.guardian.core.health.ping_robo", return_value=True),
+            ):
+                saude = ler_saude(root, log)
+            assert saude.sessao is not None
+            self.assertEqual(saude.sessao.rx, 500)
+            self.assertEqual(saude.sessao.linha, "health-json")
+            self.assertTrue(saude.na_base)
+
+    def test_json_invalido_retorna_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cozmo-saude.json"
+            path.write_text("{", encoding="utf-8")
+            self.assertIsNone(ler_json(path))
+
     def test_servico_ativo_detecta_lock_manual(self) -> None:
         from cozmo_companion.guardian.core.health import servico_ativo
 

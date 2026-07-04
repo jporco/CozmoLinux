@@ -8,6 +8,25 @@ from cozmo_companion.core.head_touch import HeadPetDetector
 
 
 class TestHeadPet(unittest.TestCase):
+    def test_dedo_na_base_dispara_por_angulo_sem_exigir_accel(self):
+        chamadas = []
+        det = HeadPetDetector(lambda: chamadas.append(1))
+        cli = MagicMock(robot_picked_up=False)
+        cli.head_angle.radians = 0.2
+        cli.accel.x, cli.accel.y, cli.accel.z = 0.0, 0.0, 9.8
+        with patch.dict(
+            os.environ,
+            {
+                "CARINHO_BASE_AND": "0",
+                "CARINHO_BASE_ANG_MULT": "2.0",
+                "CARINHO_COOLDOWN_S": "0",
+            },
+        ):
+            det.update(cli, preso_na_base=True)
+            cli.head_angle.radians = 0.34
+            det.update(cli, preso_na_base=True)
+        self.assertEqual(chamadas, [1])
+
     def test_head_pet_na_base(self):
         chamadas = []
         det = HeadPetDetector(lambda: chamadas.append(1))

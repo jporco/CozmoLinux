@@ -642,21 +642,19 @@ class CompanionVoz:
         self._vida.registrar_interacao(
             20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base
         )
-        grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
-        if self._na_base_efetivo():
-            pool = self._anim_director.pool(
-                set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
-            )
-            if pool:
-                self._fila.enviar_anim(pool, prioridade=False)
-            logger.info("Barulho na base — reação leve serializada")
-            return
-        self._pedir_fala_espontanea(
-            random.choice(("opa", "ei", "calma")),
-            tela=None,
-            grupos=grupos,
-            prioridade=True,
+        pool = self._anim_director.pool(
+            set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
         )
+        if pool:
+            self._fila.enviar_anim(pool, prioridade=False)
+        # "Repete" o barulho com um bipe curto do próprio alto-falante do Cozmo
+        # (sem TTS/fala e sem depender do microfone do PC para o retorno) —
+        # mais intenso quanto mais alto veio o som, tipo a florzinha que reage
+        # a grito.
+        limiar_intenso = float(os.environ.get("BARULHO_INTENSO_RMS", "2600"))
+        tipo_som = "susto" if nivel >= limiar_intenso else "curioso"
+        self._tocar_som_reacao(tipo_som)
+        logger.info("Barulho na base" if self._na_base_efetivo() else "Barulho livre")
 
     def _reagir_latido(self, texto: str = "") -> None:
         agora = time.monotonic()

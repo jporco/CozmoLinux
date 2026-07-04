@@ -549,7 +549,11 @@ class Companion(CompanionVoz):
     def _ao_carinho_cabeca(self) -> None:
         agora = time.monotonic()
         if self._vida.dormindo:
-            logger.debug("Carinho ignorado — dormindo")
+            self._detector_escuro.marcar_despertar()
+            acordou = self._vida.acordar_por_toque(
+                self.cli, preso_na_base=self._na_base_efetivo()
+            )
+            logger.info("Toque — acordando (%s)", "dormindo" if acordou else "já acordado")
             return
         from cozmo_companion.core.charger import carga_prioritaria
 

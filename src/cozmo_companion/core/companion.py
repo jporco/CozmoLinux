@@ -118,8 +118,13 @@ class Companion(CompanionVoz):
         self._ultima_reacao_sensor = 0.0
         self._espirito = Espirito()
         self._mesa = MesaSegura(cli)
-        self._explorador = ExploradorMesa(self._mesa)
+        self._explorador = ExploradorMesa(
+            self._mesa, obstaculo_frontal=lambda: self._face.caminho_bloqueado
+        )
         self._pet_livre = PetLivre()
+        from cozmo_companion.core.leds import LuzesBackpack
+
+        self._luzes = LuzesBackpack()
         self._face = FaceWatch(cli)
         from cozmo_companion.core.ambiente_escuro import detector_escuro
 
@@ -1569,6 +1574,8 @@ class Companion(CompanionVoz):
 
     def _loop_pet_autonomo(self) -> None:
         safety = self._safety_state()
+        if not self._fila.ocupada and not self._falando:
+            self._luzes.tick(self.cli, na_base=safety.effective_base)
         if self._vida.dormindo or self._falando or self._llm_ocupado:
             return
         livre = safety.movement_allowed
@@ -1577,9 +1584,21 @@ class Companion(CompanionVoz):
 
         ocupado = self._fila.ocupada or self._periodo_quieto_ativo()
         if livre and (self._explorador.explorando or not ocupado):
+            if (
+                self._explorador.explorando
+                and self._gov.pode("camera")
+                and not self._face.ativo
+            ):
+                self._face.ligar(na_base=False, forcar=True)
+            self._face.ativar_vigilancia_obstaculo(
+                self._explorador.explorando and self._face.ativo
+            )
             self._explorador.tick(self.cli)
         elif not safety.free_armed:
+            self._face.ativar_vigilancia_obstaculo(False)
             return
+        else:
+            self._face.ativar_vigilancia_obstaculo(False)
 
         if self._periodo_quieto_ativo() or not self._gov.ultimo_rx_ok:
             return

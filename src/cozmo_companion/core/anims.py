@@ -409,6 +409,12 @@ GRUPOS_MESA = (
     "CodeLabDuck",
     "CodeLabFrog",
     "CodeLabSheep",
+    "CodeLabDancingMambo",
+    "CodeLabCelebrate",
+    "CodeLabEnergyEat",
+    "CodeLabWin",
+    "CodeLabDizzy",
+    "CodeLabTwitch",
 )
 
 GRUPOS_MESA_CARREGADOR = (

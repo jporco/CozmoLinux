@@ -48,6 +48,13 @@ FACE_SCAN_CHANCE = float(os.environ.get("FACE_SCAN_CHANCE", "0.35"))
 FACE_CORPO_MESA = os.environ.get("FACE_CORPO_MESA", "0") == "1"
 FACE_BODY_MAX_S = float(os.environ.get("FACE_BODY_MAX_S", "1.0"))
 
+# Vigilância de obstáculo (andar na mesa) — checagem barata de brilho, sem
+# cascade de rosto: só serve pra frear antes de encostar, não detecta o quê é.
+OBST_STRIP_FRAC = float(os.environ.get("COZMO_OBST_STRIP_FRAC", "0.35"))
+OBST_DARK_DELTA = float(os.environ.get("COZMO_OBST_DARK_DELTA", "35"))
+OBST_VALID_S = float(os.environ.get("COZMO_OBST_VALID_S", "0.6"))
+OBST_FRAME_S = float(os.environ.get("COZMO_OBST_FRAME_S", "0.15"))
+
 
 class FaceWatch:
     """Segue rosto na câmera — olhar contínuo enquanto a pessoa se mexe."""
@@ -82,6 +89,9 @@ class FaceWatch:
         self._motion_hits = 0
         self._frames_janela = 0
         self._ultimo_face_lost_emit = 0.0
+        self._obstaculo_ativo = False
+        self._obstaculo_bloqueado = False
+        self._obstaculo_check_em = 0.0
 
         if _CV2:
             path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -142,6 +152,19 @@ class FaceWatch:
         self._frames_janela = 0
         logger.info("Câmera ligada (%s).", "base" if na_base else "mesa")
 
+    def ativar_vigilancia_obstaculo(self, ativo: bool) -> None:
+        """Liga/desliga a checagem barata de "algo colado na lente" ao andar."""
+        self._obstaculo_ativo = ativo
+        if not ativo:
+            self._obstaculo_bloqueado = False
+
+    @property
+    def caminho_bloqueado(self) -> bool:
+        """Best-effort — sem checagem recente, assume livre (falha aberta)."""
+        if time.monotonic() - self._obstaculo_check_em > OBST_VALID_S:
+            return False
+        return self._obstaculo_bloqueado
+
     def vincular_detector_luz(self, detector: object | None) -> None:
         self._detector_luz = detector
 
@@ -186,6 +209,8 @@ class FaceWatch:
         self._corpo_desde = 0.0
         self._smooth_x = 0.0
         self._smooth_y = 0.0
+        self._obstaculo_ativo = False
+        self._obstaculo_bloqueado = False
 
     def iniciar_busca(self, duracao_s: float, na_base: bool = True) -> bool:
         if na_base and os.environ.get("COZMO_FACE_BASE", "0") != "1":
@@ -305,7 +330,7 @@ class FaceWatch:
         """Só enfileira — OpenCV NÃO pode rodar na thread UDP (mata ping → COZMO 01)."""
         if not self.ativo:
             return
-        if not self._busca_ativa and self._amostra_luz_ate <= 0:
+        if not self._busca_ativa and self._amostra_luz_ate <= 0 and not self._obstaculo_ativo:
             return
         try:
             self._img_q.put_nowait(imagem)
@@ -321,7 +346,12 @@ class FaceWatch:
 
     def _processar_fila_imagem(self, *, luz_apenas: bool = False) -> None:
         agora = time.monotonic()
-        intervalo = 0.35 if luz_apenas else self._intervalo_efetivo
+        if luz_apenas:
+            intervalo = 0.35
+        elif not self._busca_ativa and self._obstaculo_ativo:
+            intervalo = OBST_FRAME_S
+        else:
+            intervalo = self._intervalo_efetivo
         if agora - self._ultimo_frame < intervalo:
             return
         try:
@@ -347,7 +377,13 @@ class FaceWatch:
                 self._detector_luz.amostrar(imagem)  # type: ignore[attr-defined]
             except Exception:
                 pass
+        if getattr(self, "_obstaculo_ativo", False):
+            self._checar_obstaculo(cinza)
+
         if luz_apenas or self._cascade is None:
+            return
+        if not self._busca_ativa:
+            # Só vigilância de obstáculo — pula cascade/movimento (mais barato).
             return
 
         self._emitir_movimento(cinza)
@@ -398,6 +434,20 @@ class FaceWatch:
         self._busca_ate = max(self._busca_ate, self._ultimo_rosto + FACE_EXTEND_S)
         self._suavizar(ox, oy)
         self._aplicar_rastreio()
+
+    def _checar_obstaculo(self, cinza: np.ndarray) -> None:
+        """Faixa inferior do quadro muito mais escura que o resto = algo colado
+        na lente (parede/objeto bem perto). Heurística barata, não identifica
+        o quê é — só serve pra frear antes do baque no acelerômetro."""
+        h = cinza.shape[0]
+        corte = int(h * (1 - OBST_STRIP_FRAC))
+        faixa = cinza[corte:, :]
+        if faixa.size == 0:
+            return
+        media_faixa = float(faixa.mean())
+        media_geral = float(cinza.mean())
+        self._obstaculo_check_em = time.monotonic()
+        self._obstaculo_bloqueado = (media_geral - media_faixa) > OBST_DARK_DELTA
 
     def _emitir_movimento(self, cinza: np.ndarray) -> None:
         pequeno = cinza[::8, ::8].astype(np.int16, copy=False)

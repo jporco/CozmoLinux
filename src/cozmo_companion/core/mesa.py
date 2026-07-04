@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import pycozmo
 from pycozmo import event, protocol_encoder, robot
@@ -193,8 +193,14 @@ class MesaSegura:
 class ExploradorMesa:
     """Explora a mesa devagar — para, olha, anda pouco, recua na borda."""
 
-    def __init__(self, segura: MesaSegura):
+    def __init__(
+        self,
+        segura: MesaSegura,
+        *,
+        obstaculo_frontal: Callable[[], bool] | None = None,
+    ):
         self._segura = segura
+        self._obstaculo_frontal = obstaculo_frontal
         self._estado = "off"
         self._ate = 0.0
         self._proxima = time.monotonic() + random.uniform(
@@ -208,6 +214,10 @@ class ExploradorMesa:
     @property
     def explorando(self) -> bool:
         return self._estado not in ("off", "pausa")
+
+    @property
+    def andando(self) -> bool:
+        return self._estado == "andar"
 
     def antecipar(self, segundos: float = 3.0) -> None:
         """Encurta espera até a próxima exploração."""
@@ -333,6 +343,10 @@ class ExploradorMesa:
             if self._segura.colisao(self._accel_prev):
                 logger.info("Colisão na mesa — recuando.")
                 self._emergencia(cli, "colisão")
+                return
+            if self._obstaculo_frontal is not None and self._obstaculo_frontal():
+                logger.info("Obstáculo à frente (câmera) — recuando antes do baque.")
+                self._emergencia(cli, "obstáculo")
         elif self._estado == "girar":
             if sens.perigo_borda():
                 self._emergencia(cli, "cliff no giro")

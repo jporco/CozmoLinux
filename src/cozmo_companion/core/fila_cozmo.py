@@ -637,6 +637,7 @@ class FilaCozmo:
         if not self.na_base():
             return
         from cozmo_companion.core.motor_cozmo import (
+            liberar_base_oled_loop_hold,
             ping_oob,
             religar_base_oled_pos_notif,
             segurar_base_oled_loop,
@@ -658,6 +659,12 @@ class FilaCozmo:
             manter_sono_ppclip,
             sono_oled_usa_texto,
         )
+
+        # Libera o hold artificial antes de religar — religar_base_oled_pos_notif
+        # aborta de imediato se o loop ainda estiver "segurado", então mantê-lo
+        # travado aqui deixava a tela presa no texto da notif até o watchdog
+        # periódico (companion.py) expirar o hold vários segundos depois.
+        liberar_base_oled_loop_hold(motivo="pos_quiet_drenado")
 
         if sono_oled_texto_ativo() or sono_oled_usa_texto():
             manter_sono_oled_texto(cli)
@@ -700,6 +707,8 @@ class FilaCozmo:
             self._quiet_fim = 0.0
             if self.na_base() and not self._fila:
                 self._drenar_rx_pos_quiet(cli)
+                self._restaurar_rosto_pos_item(cli)
+                self._procedural_desligado = False
 
         if self._estado == EstadoFila.WAIT_OLED:
             if agora < self._oled_fim:

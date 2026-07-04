@@ -52,6 +52,10 @@ class MotionReactionDetector:
         anterior = self._accel
         self._accel = atual
         if not picked or anterior is None:
+            # Preso na base/carregador o acelerômetro capta o próprio ppclip
+            # mexendo a cabeça (jerk contínuo indistinguível de um sacudir real
+            # sem o robô sair do chão) — testado e causava disparo falso a
+            # cada ciclo de cooldown. Mantém shake só com robot_picked_up.
             return
 
         jerk = math.sqrt(sum((atual[i] - anterior[i]) ** 2 for i in range(3)))

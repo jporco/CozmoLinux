@@ -23,11 +23,13 @@ from cozmo_companion.core.conexao import (
     wlan0_preso_cozmo,
 )
 from cozmo_companion.core.limites import limites
+from cozmo_companion.core.config import network_tuning
 
 logger = logging.getLogger("cozmo.governador")
 
 # Custo abstrato por tipo de comando (unidades do bucket).
 _CUSTO: dict[str, int] = {
+    "micro": 1,
     "anim": 5,
     "tts": 3,
     "camera": 5,
@@ -38,6 +40,7 @@ _CUSTO: dict[str, int] = {
 }
 
 _MIN_INTERVALO: dict[str, float] = {
+    "micro": 0.8,
     "anim": 0.0,  # preenchido no __init__ a partir de limites
     "tts": 1.5,
     "camera": 8.0,
@@ -151,6 +154,9 @@ class GovernadorCozmo:
                 return False
             if acao == "tts" and not prioridade:
                 return False
+            # micro = pequeno gesto de cabeça/piscar, custo mínimo e serial.
+            if acao == "micro":
+                return True
 
         if self._fase == FaseLink.AMARELO:
             if acao in ("espirito", "camera") and not prioridade:
@@ -229,10 +235,7 @@ class GovernadorCozmo:
         ppclip_ping = _ppclip_sessao_viva(cli)
         self._base_anim_livre = ppclip_ping
         tx_ppclip_ok = int(
-            os.environ.get(
-                "GOV_PPCLIP_DTX_OK",
-                os.environ.get("COZMO_BASE_TX_STALL", "240"),
-            )
+            os.environ.get("GOV_PPCLIP_DTX_OK", str(network_tuning().base_tx_stall))
         )
         # drx=0 + dtx alto na janela = flood sem ACK — ≠ ppclip saudável.
         procedural_ok = (

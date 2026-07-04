@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import time
@@ -233,6 +234,52 @@ def ler_log(
         carregando=carregando,
         na_base=na_base,
     )
+
+
+def ler_json(caminho: Path) -> Saude | None:
+    """Lê o heartbeat estruturado do loop principal.
+
+    Retorna ``None`` somente quando o arquivo não existe ou é inválido; nesse
+    caso o guardian pode recorrer ao parser de log por compatibilidade.
+    """
+    try:
+        raw = json.loads(caminho.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(str(raw["ts"]))
+        estado = str(raw["estado"])
+        rx = int(raw["rx"])
+        tx = int(raw["tx"])
+        bateria = float(raw["bateria_v"])
+        ratio = float(raw.get("ratio_acum", tx / max(rx, 1)))
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    idade = max(0.0, time.time() - ts.timestamp())
+    rx_ok = bool(raw.get("rx_ok", True))
+    sessao = SessaoLog(
+        estado=estado,
+        ping="OK" if rx_ok else "FAIL",
+        bateria_v=bateria,
+        rx=rx,
+        tx=tx,
+        ratio=ratio,
+        linha="health-json",
+        idade_s=idade,
+    )
+    preso = raw.get("preso_base")
+    return Saude(
+        servico_ativo=servico_ativo(),
+        ping_ok=ping_robo(),
+        sessao=sessao,
+        erros_recentes=0,
+        ultimo_erro=None,
+        carregando=None,
+        na_base=bool(preso) if preso is not None else None,
+    )
+
+
+def ler_saude(root: Path, log_path: Path) -> Saude:
+    """JSON é a fonte primária; log existe apenas como fallback legado."""
+    estruturada = ler_json(root / "data" / "cozmo-saude.json")
+    return estruturada if estruturada is not None else ler_log(log_path)
 
 
 def sessao_morta(saude: Saude, *, ratio_limite: float = 4.0, idade_max_s: float = 90.0) -> bool:

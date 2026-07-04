@@ -10,6 +10,8 @@ import time
 from collections import deque
 from pathlib import Path
 
+from cozmo_companion.core.config import network_tuning
+
 logger = logging.getLogger("cozmo.conexao")
 
 ROOT = Path(os.environ.get("COZMO_COMPANION_ROOT", "/mnt/G/PROJETOS/cozmo-companion"))
@@ -202,7 +204,7 @@ def pode_tentar_wifi(*, forcado: bool = False) -> bool:
         cooldown = float(
             os.environ.get(
                 "COZMO_WIFI_ROUTE_RETRY_S",
-                os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"),
+                str(network_tuning().wifi_offline_retry_s),
             )
         )
         if time.monotonic() - _ultimo_wifi_tentativa < cooldown:
@@ -220,7 +222,7 @@ def pode_tentar_wifi(*, forcado: bool = False) -> bool:
     )
     if not cozmo_ssid_visivel(rescan=rescan):
         if nunca_desconectar_wifi() and preso:
-            cooldown = float(os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"))
+            cooldown = network_tuning().wifi_offline_retry_s
             return time.monotonic() - _ultimo_wifi_tentativa >= cooldown
         return False
     cooldown = float(os.environ.get("COZMO_WIFI_COOLDOWN_S", "60"))
@@ -471,7 +473,7 @@ def udp_saturado_por_delta(drx: int, dtx: int) -> bool:
     """RX parado na janela com TX alto = sessão morta (não ratio acumulado)."""
     if drx > 0:
         return False
-    return dtx >= int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "320"))
+    return dtx >= network_tuning().udp_delta_tx_sat
 
 
 def udp_leve(cli, limite: float | None = None) -> bool:
@@ -502,7 +504,9 @@ def gravar_saude(cli, *, extra: dict | None = None) -> None:
         }
         if extra:
             payload.update(extra)
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
     except OSError:
         pass
 
@@ -643,13 +647,13 @@ class MonitorRx:
         proc = procedural_ativo(cli)
         ppclip = ppclip_base_ativo(cli)
         anim_tx = proc or ppclip
-        proc_stall_s = float(os.environ.get("COZMO_PROC_RX_STALL_S", "120"))
+        proc_stall_s = network_tuning().proc_rx_stall_s
         ppclip_stall_s = float(os.environ.get("COZMO_PPCLIP_RX_STALL_S", "120"))
         proc_ratio_max = float(os.environ.get("COZMO_PROC_STALL_RATIO_MAX", "8.0"))
 
         tx_idle_pp = int(os.environ.get("GOV_PPCLIP_TX_IDLE_DELTA", "80"))
         tx_min = int(os.environ.get("COZMO_RX_STALL_TX_MIN", "200"))
-        tx_sat = int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "320"))
+        tx_sat = network_tuning().udp_delta_tx_sat
         dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
         tx_delta = tx - self._tx
         rx_parado_s = agora - self._rx_em
@@ -686,11 +690,11 @@ class MonitorRx:
             return True
 
         # TX alto + RX parado = COZMO 01 — ppclip só tolera TX baixo (acima), não 120s cego.
-        stall_parado = float(os.environ.get("COZMO_RX_STALL_PARADO_S", "25"))
+        stall_parado = network_tuning().rx_stall_parado_s
         if proc and not ppclip:
             stall_parado = min(
                 stall_parado,
-                float(os.environ.get("COZMO_PROC_RX_STALL_S", "20")),
+                network_tuning().proc_rx_stall_s,
             )
         if (
             rx == self._rx
@@ -716,7 +720,7 @@ class MonitorRx:
                     return False
 
         # RX parado com TX subindo — só stall se ratio acum alto (procedural na base).
-        stall_rx_s = float(os.environ.get("COZMO_RX_STALL_PARADO_S", "45"))
+        stall_rx_s = network_tuning().rx_stall_parado_s
         if (
             rx == self._rx
             and tx_delta >= tx_min
@@ -764,7 +768,7 @@ def link_rx_congelado(cli, monitor: MonitorRx, medidor: MedidorUdp) -> bool:
     drx, dtx, _ = medidor.amostra(cli)
     if drx > 0:
         return False
-    return dtx >= int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "520"))
+    return dtx >= network_tuning().udp_delta_tx_sat
 
 
 def precisa_reconectar_udp(
@@ -782,7 +786,7 @@ def precisa_reconectar_udp(
 
     drx, dtx, r_delta = medidor.amostra(cli)
     ratio_alto = float(os.environ.get("GOV_RX_RATIO_ALTO", "2.0"))
-    tx_sat = int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "520"))
+    tx_sat = network_tuning().udp_delta_tx_sat
 
     if drx <= 0 and dtx >= tx_sat:
         return True
@@ -837,8 +841,8 @@ def recuperar_sessao_inplace(cli) -> bool:
         else:
             cli.cancel_anim()
             cli.stop_all_motors()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao pausar animação na recuperação in-place: %s", exc)
     time.sleep(float(os.environ.get("COZMO_INPLACE_PAUSE_S", "1.5")))
     d = diagnostico(cli)
     rx_depois = d["recv_frames"]
@@ -882,8 +886,8 @@ def aguardar_pronto(cli, timeout_s: float | None = None) -> bool:
             if st != 0:
                 logger.info("Cozmo pronto (status=%#x, %.2fV)", st, v)
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("RobotState ainda indisponível durante inicialização: %s", exc)
         time.sleep(0.25)
 
     v = getattr(cli, "battery_voltage", 0.0)
@@ -922,8 +926,8 @@ def abrir_cliente(
             _lg.removeHandler(_h)
             try:
                 _h.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Falha ao fechar handler de log antigo: %s", exc)
     setup_basic_logging(
         log_level=log_level,
         protocol_log_level=protocol_log_level,
@@ -1012,8 +1016,8 @@ def fechar_cliente(cli, *, pausa: float | None = None, forcado: bool = False) ->
     if nunca_desconectar_udp() and not forcado:
         try:
             cli.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Falha no stop local sem Disconnect UDP: %s", exc)
         pausa = min(pausa, float(os.environ.get("COZMO_DISCONNECT_PAUSE_MIN_S", "0.3")))
         logger.info("Stop local sem Disconnect UDP — pausa %.0fs", pausa)
         time.sleep(pausa)
@@ -1025,12 +1029,12 @@ def fechar_cliente(cli, *, pausa: float | None = None, forcado: bool = False) ->
     try:
         if cli.conn.state == Connection.CONNECTED:
             cli.disconnect()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao desconectar cliente: %s", exc)
     try:
         cli.stop()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao parar cliente: %s", exc)
     logger.info("Aguardando %.0fs para o Cozmo fechar sessão UDP...", pausa)
     time.sleep(pausa)
 

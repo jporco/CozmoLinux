@@ -530,18 +530,14 @@ class Companion(CompanionVoz):
             ):
                 return True
             return False
-        from cozmo_companion.core.motor_cozmo import (
-            _oled_anim_vivo,
-            keeper_base_ativo,
-            ppclip_base_ativo,
-        )
-
+        # O ppclip contínuo da base tem movimento limitado a ±6°. Não o usamos
+        # como bloqueio porque isso tornava impossível detectar o dedo enquanto
+        # os olhos estavam vivos. Os limiares do HeadPetDetector filtram esse
+        # micro-movimento; fila/TTS/câmera continuam sendo bloqueios reais.
         ac = self.cli.anim_controller
         if ac.playing_animation or ac.playing_audio or not ac.queue.is_empty():
             return True
-        if keeper_base_ativo():
-            return True
-        if _oled_anim_vivo(self.cli) or ppclip_base_ativo(self.cli):
+        if self._face.buscando or self._face.rastreando:
             return True
         return False
 
@@ -593,8 +589,8 @@ class Companion(CompanionVoz):
             self._explorador.parar_tudo(self.cli)
             try:
                 self.cli.cancel_anim()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Falha ao cancelar animação durante troca de modo: %s", exc)
             self.cli.stop_all_motors()
             self._base.alternar_modo_botao(self.cli)
             from cozmo_companion.core.charger import definir_oled_preso_na_base
@@ -805,22 +801,14 @@ class Companion(CompanionVoz):
                 _garantir_base_oled_anim_loop(self.cli)
             return
         if base_oled_usa_charger(self.cli) and _charger_play_stream(self.cli):
-            agora = time.monotonic()
-            ac = self.cli.anim_controller
-            if ac.playing_animation or ac.playing_audio:
-                if self._anim_travada_desde <= 0:
-                    self._anim_travada_desde = agora
-                elif agora - self._anim_travada_desde >= float(
-                    os.environ.get("COZMO_ANIM_TRAVADA_S", "6")
-                ):
-                    try:
-                        self.cli.cancel_anim()
-                    except Exception:
-                        pass
-                    self._anim_travada_desde = 0.0
-                    ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
-            else:
-                self._anim_travada_desde = 0.0
+            from cozmo_companion.core.motor_cozmo import vigiar_anim_presa
+
+            self._anim_travada_desde, cancelou = vigiar_anim_presa(
+                self.cli, self._anim_travada_desde
+            )
+            if cancelou:
+                ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
+            elif self._anim_travada_desde <= 0:
                 if not _charger_stream_sessao and rx_link_ok():
                     ligar_oled_base(self.cli, forcar=False, preso_na_base=True)
             return
@@ -834,22 +822,13 @@ class Companion(CompanionVoz):
         if _base_oled_anim_loop_ativo() and _clip_loop_vivo():
             return
 
-        agora = time.monotonic()
-        ac = self.cli.anim_controller
-        if ac.playing_animation or ac.playing_audio:
-            if self._anim_travada_desde <= 0:
-                self._anim_travada_desde = agora
-            elif agora - self._anim_travada_desde >= float(
-                os.environ.get("COZMO_ANIM_TRAVADA_S", "6")
-            ):
-                try:
-                    self.cli.cancel_anim()
-                except Exception:
-                    pass
-                self._anim_travada_desde = 0.0
-                modo_base_olhos(self.cli)
-        else:
-            self._anim_travada_desde = 0.0
+        from cozmo_companion.core.motor_cozmo import vigiar_anim_presa
+
+        self._anim_travada_desde, cancelou = vigiar_anim_presa(
+            self.cli, self._anim_travada_desde
+        )
+        if cancelou:
+            modo_base_olhos(self.cli)
 
     def _modo_sono_zZz_oled(self) -> bool:
         if not self._vida.dormindo or not self._na_base_efetivo():
@@ -1237,11 +1216,14 @@ class Companion(CompanionVoz):
         )
         self._modo_udp_leve = g.reduzir_trafego
         from cozmo_companion.core.motor_cozmo import (
+            ajustar_oled_fase_link,
             cortar_flood_udp_base,
             definir_rx_link_ok,
         )
 
         definir_rx_link_ok(g.rx_ok)
+        if self._na_base_efetivo():
+            ajustar_oled_fase_link(self.cli, g.fase.value)
 
         # Watchdog COZMO 01 (alto nível, à prova dos gates finos): rx_ok=False
         # contínuo por muito tempo enquanto o AP segue conectado = sessão de
@@ -1343,7 +1325,9 @@ class Companion(CompanionVoz):
                 self._reabrir_udp_apos_wifi()
 
         drx, dtx, _ = self._gov._medidor.amostra(self.cli)
-        tx_stall_base = int(os.environ.get("COZMO_BASE_TX_STALL", "280"))
+        from cozmo_companion.core.config import network_tuning
+
+        tx_stall_base = network_tuning().base_tx_stall
         janela_sem_drx = drx <= 0 and dtx >= tx_stall_base
         if (
             self._na_base_efetivo()
@@ -1486,6 +1470,13 @@ class Companion(CompanionVoz):
             return
         self._proximo_pulse_vivo = agora + random.uniform(pulse_s * 0.85, pulse_s * 1.15)
         if self.cli.robot_picked_up:
+            return
+        if not self._gov.reservar("micro"):
+            return
+        # Em link degradado, somente o gesto barato; animação completa fica
+        # reservada para VERDE.
+        if self._gov.fase != FaseLink.VERDE:
+            self._vivo.reagir_ouvir(self.cli)
             return
         if (
             self._na_base_efetivo()
@@ -1815,7 +1806,7 @@ class Companion(CompanionVoz):
                 )
                 if precisa_wifi:
                     if not cozmo_rota_ap() or agora - self._ultimo_wifi_offline >= float(
-                        os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "45")
+                        str(network_tuning().wifi_offline_retry_s)
                     ):
                         self._ultimo_wifi_offline = agora
                         if reconectar_wifi(forcado=not cozmo_rota_ap()):

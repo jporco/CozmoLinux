@@ -35,6 +35,18 @@ class TestGovernador(unittest.TestCase):
         self.assertTrue(g.pode("anim", prioridade=True))
         self.assertFalse(g.pode("espirito"))
 
+    def test_micro_custa_um_e_roda_no_amarelo_laranja(self) -> None:
+        g = GovernadorCozmo()
+        g._tokens = 5.0
+        g._fase = FaseLink.AMARELO
+        self.assertTrue(g.reservar("micro"))
+        self.assertGreaterEqual(g._tokens, 4.0)
+        g._fase = FaseLink.LARANJA
+        g._ultimo["micro"] = 0.0
+        self.assertTrue(g.pode("micro"))
+        g._fase = FaseLink.VERMELHO
+        self.assertFalse(g.pode("micro"))
+
     @patch("cozmo_companion.core.governador.cozmo_alcanavel", return_value=True)
     @patch("cozmo_companion.core.governador.conexao_ok", return_value=True)
     @patch("cozmo_companion.core.governador.ratio_udp", return_value=2.0)
@@ -42,7 +54,7 @@ class TestGovernador(unittest.TestCase):
         g = GovernadorCozmo()
         rx = MonitorRx()
         cli = MagicMock()
-        with patch.object(g._medidor, "amostra", return_value=(0, 400, 0.0)):
+        with patch.object(g._medidor, "amostra", return_value=(0, 600, 0.0)):
             with patch.object(rx, "tick", return_value=False):
                 t = g.tick(cli, monitor_rx=rx, busy=False, quieto=False)
         self.assertEqual(t.fase, FaseLink.VERMELHO)

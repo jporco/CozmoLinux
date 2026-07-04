@@ -78,6 +78,59 @@ _base_oled_loop_hold_ate: float = 0.0
 _base_oled_loop_hold_desde: float = 0.0
 _ultimo_watchdog_oled: float = 0.0
 _base_oled_anim_loop_pausado_ate: float = 0.0
+_oled_fase_observada = "verde"
+_oled_fase_aplicada = "verde"
+_oled_fase_observada_desde = 0.0
+
+
+def oled_hz_para_fase(fase: str, base_hz: float = 4.0) -> float:
+    """Orçamento OLED por fase: degrada antes de o RX parar."""
+    limites = {
+        "verde": float(os.environ.get("COZMO_OLED_HZ_VERDE", str(base_hz))),
+        "amarelo": float(os.environ.get("COZMO_OLED_HZ_AMARELO", "3")),
+        "laranja": float(os.environ.get("COZMO_OLED_HZ_LARANJA", "1")),
+        "vermelho": float(os.environ.get("COZMO_OLED_HZ_VERMELHO", "0.2")),
+    }
+    return max(0.1, min(base_hz, limites.get(fase, base_hz)))
+
+
+def ajustar_oled_fase_link(cli: "pycozmo.Client", fase: str) -> bool:
+    """Troca ppclip por keeper adaptativo conforme a saúde do link.
+
+    Downgrade é imediato. Upgrade espera estabilidade para evitar alternância
+    ppclip↔keeper a cada janela do governador.
+    """
+    global _oled_fase_observada, _oled_fase_aplicada, _oled_fase_observada_desde
+    fase = fase if fase in ("verde", "amarelo", "laranja", "vermelho") else "verde"
+    agora = time.monotonic()
+    if fase != _oled_fase_observada:
+        _oled_fase_observada = fase
+        _oled_fase_observada_desde = agora
+    ordem = {"verde": 0, "amarelo": 1, "laranja": 2, "vermelho": 3}
+    if ordem[fase] < ordem[_oled_fase_aplicada]:
+        espera = float(os.environ.get("COZMO_OLED_PHASE_UPGRADE_S", "45"))
+        if agora - _oled_fase_observada_desde < espera:
+            return False
+    elif fase == _oled_fase_aplicada:
+        return False
+
+    _oled_fase_aplicada = fase
+    if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
+        return False
+    if fase == "verde":
+        _parar_display_keeper()
+        ok = _garantir_base_oled_anim_loop(cli)
+        logger.info("OLED adaptativo: VERDE -> ppclip completo")
+        return ok
+
+    _parar_loop_clip_base(timeout=1.0)
+    with _charger_oled_lock:
+        grupo = _charger_oled_nome or "IdleOnCharger"
+    hz = oled_hz_para_fase(fase, _keeper_clip_hz(cli))
+    _parar_display_keeper()
+    _iniciar_display_keeper(cli, hz, grupo=grupo)
+    logger.info("OLED adaptativo: %s -> keeper %.1f Hz", fase.upper(), hz)
+    return True
 
 
 def definir_modo_sono_oled(dormindo: bool) -> None:
@@ -698,6 +751,38 @@ def definir_rx_link_ok(ok: bool) -> None:
     elif _rx_off_desde <= 0:
         _rx_off_desde = time.monotonic()
     _base_rx_link_ok = ok
+
+
+def vigiar_anim_presa(
+    cli: "pycozmo.Client",
+    desde: float,
+    *,
+    limite_s: float | None = None,
+) -> tuple[float, bool]:
+    """Fonte única para detectar/cancelar AnimationController preso.
+
+    Retorna ``(novo_desde, cancelou)``. Um estado livre sempre zera o timer.
+    """
+    ac = cli.anim_controller
+    ativa = bool(ac.playing_animation or ac.playing_audio)
+    if not ativa:
+        return 0.0, False
+    agora = time.monotonic()
+    if desde <= 0:
+        return agora, False
+    limite = (
+        float(limite_s)
+        if limite_s is not None
+        else float(os.environ.get("COZMO_ANIM_TRAVADA_S", "6"))
+    )
+    if agora - desde < max(0.5, limite):
+        return desde, False
+    try:
+        cli.cancel_anim()
+    except Exception as exc:
+        logger.debug("Watchdog anim presa: cancel falhou: %s", exc)
+    logger.warning("Watchdog: animação presa por %.1fs — cancelada", agora - desde)
+    return 0.0, True
 
 
 def rx_link_ok() -> bool:
@@ -1351,6 +1436,8 @@ def _base_oled_anim_loop_ativo() -> bool:
         return False
     if _base_oled_ppclip_em_backoff():
         return False
+    if _oled_fase_aplicada != "verde":
+        return False
     modo = os.environ.get("COZMO_BASE_OLED_ANIM_LOOP", "auto").strip().lower()
     if modo in ("0", "off", "false", "no"):
         return False
@@ -1371,6 +1458,7 @@ def resetar_sessao_oled_base() -> None:
     """Nova conexão UDP: descarta workers/backoff ligados ao cliente antigo."""
     global _base_oled_anim_loop_pausado_ate, _charger_keeper_ativo
     global _charger_stream_sessao, _charger_oled_nome
+    global _oled_fase_observada, _oled_fase_aplicada, _oled_fase_observada_desde
     _parar_base_oled_anim_loop(timeout=1.0)
     _parar_display_keeper()
     _parar_charger_worker(timeout=0.5)
@@ -1378,6 +1466,9 @@ def resetar_sessao_oled_base() -> None:
     _base_oled_anim_loop_pausado_ate = 0.0
     _charger_keeper_ativo = False
     _charger_stream_sessao = False
+    _oled_fase_observada = "verde"
+    _oled_fase_aplicada = "verde"
+    _oled_fase_observada_desde = time.monotonic()
     with _charger_oled_lock:
         _charger_oled_nome = None
     liberar_base_oled_loop_hold(motivo="nova_sessao_udp")
@@ -1485,7 +1576,7 @@ def _keeper_clip_hz(cli: "pycozmo.Client") -> float:
         hz = float(os.environ.get("COZMO_BASE_FULL_KEEPER_HZ", "4"))
     else:
         hz = float(os.environ.get("COZMO_CHARGER_OLED_HZ", "4"))
-    return max(0.05, min(6.0, hz))
+    return oled_hz_para_fase(_oled_fase_aplicada, max(0.05, min(6.0, hz)))
 
 
 def _passo_frames_keeper(hz: float) -> int:

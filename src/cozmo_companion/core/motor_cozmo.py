@@ -1462,8 +1462,13 @@ def _base_oled_ppclip_em_backoff() -> bool:
     return time.monotonic() < _base_oled_anim_loop_pausado_ate
 
 
-def resetar_sessao_oled_base() -> None:
-    """Nova conexão UDP: descarta workers/backoff ligados ao cliente antigo."""
+def resetar_sessao_oled_base(*, fase_inicial: str = "verde") -> None:
+    """Nova conexão UDP: descarta workers/backoff ligados ao cliente antigo.
+
+    fase_inicial="laranja" (usado após recuperação de COZMO 01) força um
+    aquecimento — a fase só sobe pra verde/stream completo depois de
+    COZMO_OLED_PHASE_UPGRADE_S estável, em vez de voltar direto a 30fps e
+    estourar o buffer nos primeiros segundos pós-reconexão."""
     global _base_oled_anim_loop_pausado_ate, _charger_keeper_ativo
     global _charger_stream_sessao, _charger_oled_nome
     global _oled_fase_observada, _oled_fase_aplicada, _oled_fase_observada_desde
@@ -1474,8 +1479,8 @@ def resetar_sessao_oled_base() -> None:
     _base_oled_anim_loop_pausado_ate = 0.0
     _charger_keeper_ativo = False
     _charger_stream_sessao = False
-    _oled_fase_observada = "verde"
-    _oled_fase_aplicada = "verde"
+    _oled_fase_observada = fase_inicial
+    _oled_fase_aplicada = fase_inicial
     _oled_fase_observada_desde = time.monotonic()
     with _charger_oled_lock:
         _charger_oled_nome = None

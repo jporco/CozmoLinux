@@ -1177,11 +1177,28 @@ class Companion(CompanionVoz):
                     modo_base_olhos,
                     resetar_sessao_oled_base,
                     reset_oled_watchdog_base,
+                    segurar_base_oled_loop,
+                    _iniciar_display_keeper,
                 )
 
-                resetar_sessao_oled_base()
                 reset_oled_watchdog_base()
-                modo_base_olhos(self.cli)
+                if reset_cozmo01:
+                    # Voltar direto pro stream de 30fps é o que estourou o
+                    # buffer há segundos. Aquece devagar: keeper a 1Hz por um
+                    # tempo, fase começa em "laranja" (só sobe a verde depois
+                    # de ficar estável) em vez de já religar em velocidade máxima.
+                    resetar_sessao_oled_base(fase_inicial="laranja")
+                    aquecimento_s = float(
+                        os.environ.get("COZMO01_AQUECIMENTO_S", "20")
+                    )
+                    segurar_base_oled_loop(aquecimento_s)
+                    try:
+                        _iniciar_display_keeper(self.cli, 1.0, grupo="IdleOnCharger")
+                    except Exception as exc:
+                        logger.debug("Falha ao iniciar keeper de aquecimento: %s", exc)
+                else:
+                    resetar_sessao_oled_base()
+                    modo_base_olhos(self.cli)
             self._marcar_udp_quieto(quiet_pre)
             logger.info("Reconexão UDP OK — quieto %.0fs", quiet_pre)
             ok = True

@@ -34,6 +34,7 @@ from cozmo_companion.core.charger import (
     na_base,
 )
 from cozmo_companion.core.companion_voz import CompanionVoz
+from cozmo_companion.core.config import network_tuning
 from cozmo_companion.core.conexao import (
     MonitorRx,
     abrir_cliente,

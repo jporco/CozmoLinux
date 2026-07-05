@@ -2447,10 +2447,23 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
             if _oled_keepalive_stop.wait(interval):
                 break
             continue
-        if not base_oled_usa_charger(cli) or not rx_link_ok():
+        if not base_oled_usa_charger(cli):
             if _oled_keepalive_stop.wait(interval):
                 break
             continue
+        # RX travado: NÃO parar de enviar — o firmware apaga a OLED sem refresh
+        # em ~30s (tela preta que o usuário via a cada stall). Um único frame do
+        # último desenho a cada COZMO_BASE_OLED_STALL_HZ (bem lento) é tráfego
+        # mínimo e mantém a tela viva sem competir com o rádio.
+        stall = not rx_link_ok()
+        if stall and os.environ.get("COZMO_BASE_OLED_MANTER_EM_STALL", "1") != "1":
+            if _oled_keepalive_stop.wait(interval):
+                break
+            continue
+        intervalo_efetivo = interval
+        if stall:
+            stall_hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "0.33"))
+            intervalo_efetivo = 1.0 / max(0.05, min(1.0, stall_hz))
         if ac.playing_audio and not _keeper_envia_durante_audio():
             if _oled_keepalive_stop.wait(0.1):
                 break
@@ -2477,7 +2490,7 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
                 )
         except Exception as exc:
             logger.warning("oled_keepalive: %s", exc)
-        if _oled_keepalive_stop.wait(interval):
+        if _oled_keepalive_stop.wait(intervalo_efetivo):
             break
 
 

@@ -43,7 +43,9 @@ class LuzesBackpack:
         except Exception:
             pass
         self._rainbow_hue = (self._rainbow_hue + 0.05) % 1.0
-        self._proximo_passo = agora + 0.12
+        # Passo mais espaçado — o UDP na base já é sensível a rajada (COZMO 01);
+        # menos pacotes por segundo aqui não faz diferença visual perceptível.
+        self._proximo_passo = agora + float(os.environ.get("COZMO_LED_BASE_PASSO_S", "0.4"))
 
     def _passo_aleatorio(self, cli) -> None:
         agora = time.monotonic()

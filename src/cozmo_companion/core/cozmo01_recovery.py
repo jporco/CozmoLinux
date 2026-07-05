@@ -14,6 +14,7 @@ from cozmo_companion.core.conexao import (
     nunca_desconectar_udp,
     permitir_reset_udp_cozmo01,
 )
+from cozmo_companion.core.config import network_tuning
 from cozmo_companion.core.governador import TickGovernador
 
 if TYPE_CHECKING:
@@ -240,4 +241,3 @@ class RecuperadorCozmo01:
             return ResultadoRecuperacao(in_place=True)
 
         return ResultadoRecuperacao()
-from cozmo_companion.core.config import network_tuning

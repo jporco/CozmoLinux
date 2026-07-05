@@ -117,7 +117,12 @@ def ajustar_oled_fase_link(cli: "pycozmo.Client", fase: str) -> bool:
     _oled_fase_aplicada = fase
     if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
         return False
-    if fase == "verde":
+    # O stream 30fps do pycozmo é a maior rajada que o firmware recebe na base;
+    # o buffer dele estourando é o gatilho clássico do COZMO 01. Com
+    # COZMO_OLED_VERDE_KEEPER_HZ > 0, a fase verde também usa o keeper (frames
+    # manuais nessa taxa) em vez do stream completo — olhos seguem fluidos.
+    verde_keeper_hz = float(os.environ.get("COZMO_OLED_VERDE_KEEPER_HZ", "0"))
+    if fase == "verde" and verde_keeper_hz <= 0:
         _parar_display_keeper()
         ok = _garantir_base_oled_anim_loop(cli)
         logger.info("OLED adaptativo: VERDE -> ppclip completo")
@@ -126,7 +131,10 @@ def ajustar_oled_fase_link(cli: "pycozmo.Client", fase: str) -> bool:
     _parar_loop_clip_base(timeout=1.0)
     with _charger_oled_lock:
         grupo = _charger_oled_nome or "IdleOnCharger"
-    hz = oled_hz_para_fase(fase, _keeper_clip_hz(cli))
+    if fase == "verde":
+        hz = max(1.0, min(15.0, verde_keeper_hz))
+    else:
+        hz = oled_hz_para_fase(fase, _keeper_clip_hz(cli))
     _parar_display_keeper()
     _iniciar_display_keeper(cli, hz, grupo=grupo)
     logger.info("OLED adaptativo: %s -> keeper %.1f Hz", fase.upper(), hz)

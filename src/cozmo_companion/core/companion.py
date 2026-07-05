@@ -672,8 +672,37 @@ class Companion(CompanionVoz):
             if pegou and self._base.preso_na_base:
                 c.stop_all_motors()
 
+        def ao_buffer_anim_cheio(_cli: pycozmo.Client, cheio: bool) -> None:
+            """Sinal direto do firmware (RobotState.status) — chega ANTES do RX
+            morrer e da tela travar em COZMO 01. Parar de mandar frame na hora
+            é o único jeito de evitar o estouro; esperar o stall é tarde demais."""
+            from cozmo_companion.core.motor_cozmo import (
+                _parar_display_keeper,
+                _parar_loop_clip_base,
+                segurar_base_oled_loop,
+            )
+
+            if cheio:
+                logger.warning(
+                    "Buffer de anim do robô cheio — parando envio (evita COZMO 01)"
+                )
+                try:
+                    _parar_loop_clip_base(timeout=0.3)
+                except Exception as exc:
+                    logger.debug("Falha ao parar loop clip (buffer cheio): %s", exc)
+                try:
+                    _parar_display_keeper()
+                except Exception as exc:
+                    logger.debug("Falha ao parar keeper (buffer cheio): %s", exc)
+                segurar_base_oled_loop(
+                    float(os.environ.get("COZMO_BUFFER_CHEIO_HOLD_S", "3"))
+                )
+            else:
+                logger.info("Buffer de anim do robô liberado — retomando")
+
         self.cli.add_handler(event.EvtRobotPickedUpChange, ao_pegar)
         self.cli.add_handler(protocol_encoder.ButtonPressed, ao_botao)
+        self.cli.add_handler(event.EvtRobotAnimBufferFullChange, ao_buffer_anim_cheio)
 
     def _instalar_trava_rodas(self) -> None:
         from pycozmo import robot

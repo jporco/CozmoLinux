@@ -1301,6 +1301,11 @@ class Companion(CompanionVoz):
                 self._rx_stall_desde = agora
             stall_cont = agora - self._rx_stall_desde
             teto = float(os.environ.get("COZMO01_WATCHDOG_S", "30"))
+            if cozmo_rota_ap():
+                teto = max(
+                    teto,
+                    float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "90")),
+                )
             cooldown = float(os.environ.get("COZMO01_WATCHDOG_COOLDOWN_S", "20"))
             if (
                 stall_cont >= teto
@@ -1309,11 +1314,18 @@ class Companion(CompanionVoz):
             ):
                 from cozmo_companion.core.motor_cozmo import (
                     detectar_cozmo01_suspeito,
+                    oled_resgate_recente,
                 )
 
                 # Só reconecta (apaga a tela) se ela estiver REALMENTE travada em
                 # COZMO 01. Durante animação, drx=0 é benigno (clip é one-way, o
                 # firmware não manda telemetria) — reconectar apagaria a tela à toa.
+                if oled_resgate_recente():
+                    logger.warning(
+                        "COZMO 01 watchdog adiado — OLED resgate ativo %.0fs",
+                        stall_cont,
+                    )
+                    return
                 if detectar_cozmo01_suspeito(self.cli):
                     logger.warning(
                         "COZMO 01 watchdog — tela travada %.0fs, reconectando UDP",

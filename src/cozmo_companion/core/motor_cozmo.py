@@ -89,7 +89,7 @@ def oled_hz_para_fase(fase: str, base_hz: float = 4.0) -> float:
         "verde": float(os.environ.get("COZMO_OLED_HZ_VERDE", str(base_hz))),
         "amarelo": float(os.environ.get("COZMO_OLED_HZ_AMARELO", "3")),
         "laranja": float(os.environ.get("COZMO_OLED_HZ_LARANJA", "1")),
-        "vermelho": float(os.environ.get("COZMO_OLED_HZ_VERMELHO", "0.2")),
+        "vermelho": float(os.environ.get("COZMO_OLED_HZ_VERMELHO", "1.0")),
     }
     return max(0.1, min(base_hz, limites.get(fase, base_hz)))
 
@@ -801,6 +801,16 @@ def oled_frame_recente(max_s: float | None = None) -> bool:
         else float(os.environ.get("COZMO01_OLED_RECENT_S", "45"))
     )
     return time.monotonic() - _ultimo_exibir_clip_em <= limite
+
+
+def oled_resgate_recente(max_s: float | None = None) -> bool:
+    """True se o resgate visual está mantendo a OLED durante stall RX."""
+    limite = (
+        float(max_s)
+        if max_s is not None
+        else float(os.environ.get("COZMO_OLED_RESCUE_RECENT_S", "15"))
+    )
+    return _ultimo_exibir_clip_grupo == "resgate_oled" and oled_frame_recente(limite)
 
 
 def _keeper_segura_tx_backpressure() -> bool:
@@ -2150,6 +2160,31 @@ def _imagem_vazia(pkt: object) -> bool:
     return not img or img == b"\x3f\x3f"
 
 
+def _imagem_fraca_para_resgate(pkt: object) -> bool:
+    """Frames muito pequenos costumam ser pretos/quase vazios no OLED compactado."""
+    img = getattr(pkt, "image", None)
+    return not img or len(img) < int(os.environ.get("COZMO_OLED_RESCUE_MIN_BYTES", "64"))
+
+
+def _semear_oled_resgate(cli: "pycozmo.Client", *, motivo: str = "") -> bool:
+    """Envia olhos procedurais visíveis sem depender do último frame do clip."""
+    global _ultimo_exibir_clip_em, _ultimo_exibir_clip_grupo
+    from cozmo_companion.display.rosto import pkt_rosto_procedural
+
+    try:
+        pkt = pkt_rosto_procedural(cli)
+        _handshake_frame_oled(cli, force=True)
+        cli.conn.send(pkt)
+        cli.anim_controller.last_image_pkt = pkt
+        _ultimo_exibir_clip_em = time.monotonic()
+        _ultimo_exibir_clip_grupo = "resgate_oled"
+        logger.warning("Base OLED: resgate visual%s", f" ({motivo})" if motivo else "")
+        return True
+    except Exception as exc:
+        logger.debug("semear_oled_resgate: %s", exc)
+        return False
+
+
 def _ppclip_grupo(cli: "pycozmo.Client", grupo: str):
     """PreprocessedClip do grupo — na base usa clip sem keyframes de roda."""
     from cozmo_companion.core.anim_base_patch import (
@@ -2447,9 +2482,12 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
                 break
             continue
         intervalo_efetivo = interval
+        hz_log = hz
         if stall:
-            stall_hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "0.33"))
-            intervalo_efetivo = 1.0 / max(0.05, min(1.0, stall_hz))
+            stall_hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "1.0"))
+            stall_hz = max(0.5, min(2.0, stall_hz))
+            hz_log = stall_hz
+            intervalo_efetivo = 1.0 / stall_hz
         if ac.playing_audio and not _keeper_envia_durante_audio():
             if _oled_keepalive_stop.wait(0.1):
                 break
@@ -2457,11 +2495,14 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
         try:
             _desligar_anim_controller_base(cli)
             pkt = ac.last_image_pkt
-            if _imagem_vazia(pkt):
+            if stall and _imagem_fraca_para_resgate(pkt):
+                _semear_oled_resgate(cli, motivo="stall")
+            elif _imagem_vazia(pkt):
                 with _charger_oled_lock:
                     grupo = _charger_oled_nome
                 _handshake_frame_oled(cli, force=True)
-                _semear_oled_charger(cli, grupo)
+                if not _semear_oled_charger(cli, grupo):
+                    _semear_oled_resgate(cli, motivo="frame_vazio")
             else:
                 _handshake_frame_oled(cli)
                 cli.conn.send(pkt)
@@ -2472,7 +2513,7 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
                     "Base OLED keepalive: %s (%d B, %.1f Hz)",
                     _ultimo_exibir_clip_grupo or "?",
                     len(getattr(pkt_log, "image", b"") or b""),
-                    hz,
+                    hz_log,
                 )
         except Exception as exc:
             logger.warning("oled_keepalive: %s", exc)

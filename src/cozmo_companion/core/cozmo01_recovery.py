@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable
 from cozmo_companion.core.conexao import (
     MonitorRx,
     cozmo_alcanavel,
+    cozmo_rota_ap,
     nunca_desconectar_udp,
     permitir_reset_udp_cozmo01,
 )
@@ -156,9 +157,15 @@ class RecuperadorCozmo01:
         # preventivas) acima do teto → reset duro. Sem isso o flood fica preso minutos
         # quando uma preventiva "recupera" e zera os contadores a cada tick.
         teto_morto = float(os.environ.get("COZMO01_RX_DEAD_MAX_S", "12"))
+        if cozmo_rota_ap():
+            teto_morto = max(
+                teto_morto,
+                float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "90")),
+            )
+        rx_morto_suficiente = rx_morto >= teto_morto
         if (
             not g.rx_ok
-            and rx_morto >= teto_morto
+            and rx_morto_suficiente
             and permitir_reset_udp_cozmo01()
             and agora - ultimo_reconnect_udp >= self._cooldown_reset(emergencia=True)
         ):
@@ -215,11 +222,15 @@ class RecuperadorCozmo01:
             self.cozmo01_falhas += 1
             return ResultadoRecuperacao()
 
-        deve_reset = pode_reset and (
-            stall_s >= max_stall_s
-            or self.cozmo01_falhas >= reset_fails
-            or self.stall_consecutivo >= reset_ticks
-            or (emergencia and stall_s >= emerg_min_s)
+        deve_reset = (
+            pode_reset
+            and rx_morto_suficiente
+            and (
+                stall_s >= max_stall_s
+                or self.cozmo01_falhas >= reset_fails
+                or self.stall_consecutivo >= reset_ticks
+                or (emergencia and stall_s >= emerg_min_s)
+            )
         )
 
         if deve_reset:

@@ -1071,13 +1071,39 @@ class TestOledAntiEstatico(unittest.TestCase):
                 "COZMO_OLED_HZ_VERDE": "4",
                 "COZMO_OLED_HZ_AMARELO": "3",
                 "COZMO_OLED_HZ_LARANJA": "1",
-                "COZMO_OLED_HZ_VERMELHO": "0.2",
+                "COZMO_OLED_HZ_VERMELHO": "1.0",
             },
         ):
             self.assertEqual(motor.oled_hz_para_fase("verde", 4), 4)
             self.assertEqual(motor.oled_hz_para_fase("amarelo", 4), 3)
             self.assertEqual(motor.oled_hz_para_fase("laranja", 4), 1)
-            self.assertEqual(motor.oled_hz_para_fase("vermelho", 4), 0.2)
+            self.assertEqual(motor.oled_hz_para_fase("vermelho", 4), 1.0)
+
+    def test_frame_pequeno_aciona_resgate_oled(self) -> None:
+        pkt = MagicMock()
+        pkt.image = b"\x00" * 12
+        with patch.dict(os.environ, {"COZMO_OLED_RESCUE_MIN_BYTES": "64"}):
+            self.assertTrue(motor._imagem_fraca_para_resgate(pkt))
+
+    def test_resgate_oled_envia_rosto_visivel(self) -> None:
+        cli = MagicMock()
+        pkt = MagicMock()
+        pkt.image = b"olhos-visiveis" * 8
+        with (
+            patch("cozmo_companion.display.rosto.pkt_rosto_procedural", return_value=pkt),
+            patch.object(motor, "_handshake_frame_oled") as handshake,
+        ):
+            self.assertTrue(motor._semear_oled_resgate(cli, motivo="teste"))
+        handshake.assert_called_once_with(cli, force=True)
+        cli.conn.send.assert_called_once_with(pkt)
+        self.assertEqual(cli.anim_controller.last_image_pkt, pkt)
+
+    def test_resgate_oled_recente(self) -> None:
+        motor._ultimo_exibir_clip_grupo = "resgate_oled"
+        motor._ultimo_exibir_clip_em = time.monotonic()
+        self.assertTrue(motor.oled_resgate_recente(2.0))
+        motor._ultimo_exibir_clip_grupo = "IdleOnCharger"
+        self.assertFalse(motor.oled_resgate_recente(2.0))
 
     def test_oled_fase_degrada_imediato_para_keeper(self) -> None:
         cli = MagicMock()

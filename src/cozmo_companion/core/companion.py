@@ -1304,7 +1304,7 @@ class Companion(CompanionVoz):
             if cozmo_rota_ap():
                 teto = max(
                     teto,
-                    float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "90")),
+                    float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "20")),
                 )
             cooldown = float(os.environ.get("COZMO01_WATCHDOG_COOLDOWN_S", "20"))
             if (

@@ -22,11 +22,11 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `BASE_CAM_OFF_MIN_S` | `'35'` | `src/cozmo_companion/core/vida.py:109` |
 | `BASE_CAM_ON_MAX_S` | `'12'`, `'22'` | `src/cozmo_companion/core/vida.py:112`<br>`src/cozmo_companion/core/vida.py:176` |
 | `BASE_CAM_ON_S` | `'10'`, `'14'` | `src/cozmo_companion/core/vida.py:111`<br>`src/cozmo_companion/core/vida.py:253` |
-| `BASE_HEAD_FRAC` | `'0.62'` | `src/cozmo_companion/core/motor_cozmo.py:3786` |
+| `BASE_HEAD_FRAC` | `'0.62'` | `src/cozmo_companion/core/motor_cozmo.py:3799` |
 | `BASE_HEAD_MOVE_S` | `'22'` | `src/cozmo_companion/core/alive.py:73` |
-| `BASE_HEAD_RESET` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3803` |
-| `BASE_HEAD_SPEED` | `'6.0'`, `'8.0'` | `src/cozmo_companion/core/alive.py:84`<br>`src/cozmo_companion/core/motor_cozmo.py:3810` |
-| `BASE_HEAD_TOL_RAD` | `'0.09'` | `src/cozmo_companion/core/motor_cozmo.py:3793` |
+| `BASE_HEAD_RESET` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3816` |
+| `BASE_HEAD_SPEED` | `'6.0'`, `'8.0'` | `src/cozmo_companion/core/alive.py:84`<br>`src/cozmo_companion/core/motor_cozmo.py:3823` |
+| `BASE_HEAD_TOL_RAD` | `'0.09'` | `src/cozmo_companion/core/motor_cozmo.py:3806` |
 | `BASE_MODO_BOTAO` | `'1'`, `None` | `src/cozmo_companion/__test__/test_charger.py:81`<br>`src/cozmo_companion/__test__/test_charger.py:198`<br>`src/cozmo_companion/__test__/test_charger.py:239`<br>`src/cozmo_companion/__test__/test_charger.py:262`<br>`src/cozmo_companion/__test__/test_charger.py:287`<br>`src/cozmo_companion/__test__/test_charger.py:311`<br>`src/cozmo_companion/__test__/test_charger.py:331`<br>`src/cozmo_companion/__test__/test_charger.py:354`<br>`src/cozmo_companion/__test__/test_charger.py:379`<br>`src/cozmo_companion/__test__/test_charger.py:400`<br>`src/cozmo_companion/__test__/test_mesa.py:101`<br>`src/cozmo_companion/__test__/test_motors.py:35`<br>`src/cozmo_companion/__test__/test_toggle_botao.py:42`<br>`src/cozmo_companion/core/charger.py:63` |
 | `BASE_NUNCA_SAIR` | `'1'`, `None` | `src/cozmo_companion/__test__/test_charger.py:79`<br>`src/cozmo_companion/__test__/test_charger.py:109`<br>`src/cozmo_companion/__test__/test_charger.py:426`<br>`src/cozmo_companion/core/charger.py:657`<br>`src/cozmo_companion/core/charger.py:422`<br>`src/cozmo_companion/core/companion_legacy.py:672`<br>`src/cozmo_companion/core/companion_legacy.py:933` |
 | `BASE_PICKUP_OFF_S` | `'1.2'` | `src/cozmo_companion/core/charger.py:570` |
@@ -42,7 +42,7 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `BASE_VOZ_SOMENTE_WAKE` | `'1'` | `src/cozmo_companion/core/companion_legacy.py:1480`<br>`src/cozmo_companion/core/companion_voz.py:739` |
 | `BATTERY_ANNOUNCE` | `'0'` | `src/cozmo_companion/core/companion_legacy.py:2492` |
 | `BATTERY_CHARGE_RESUME_PCT` | `'60'` | `src/cozmo_companion/core/charger.py:54` |
-| `BATTERY_CHARGE_STOP_PCT` | `'90'` | `src/cozmo_companion/core/charger.py:53`<br>`src/cozmo_companion/core/charger.py:170`<br>`src/cozmo_companion/core/motor_cozmo.py:1045`<br>`src/cozmo_companion/core/motor_cozmo.py:1329` |
+| `BATTERY_CHARGE_STOP_PCT` | `'90'` | `src/cozmo_companion/core/charger.py:53`<br>`src/cozmo_companion/core/charger.py:170`<br>`src/cozmo_companion/core/motor_cozmo.py:1052`<br>`src/cozmo_companion/core/motor_cozmo.py:1336` |
 | `BATTERY_DROP_SPIKE_V` | `'0.25'` | `src/cozmo_companion/core/charger.py:56` |
 | `BATTERY_MIN_PCT` | `'60'` | `src/cozmo_companion/core/charger.py:52` |
 | `BATTERY_TTS_MIN_V` | `'3.85'` | `src/cozmo_companion/core/companion_legacy.py:1032` |
@@ -72,74 +72,74 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `CLIFF_RATIO` | `'0.58'` | `src/cozmo_companion/core/mesa.py:33` |
 | `COOLDOWN_VOZ_BASE_S` | `'12'`, `'3'` | `src/cozmo_companion/core/companion_legacy.py:1251`<br>`src/cozmo_companion/core/companion_legacy.py:1874`<br>`src/cozmo_companion/core/companion_voz.py:531` |
 | `COZMO01_AQUECIMENTO_S` | `'20'` | `src/cozmo_companion/core/companion.py:1187` |
-| `COZMO01_AUTO_COOLDOWN_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:4254` |
-| `COZMO01_CLIP_ACK_S` | `'0.45'` | `src/cozmo_companion/core/motor_cozmo.py:4214` |
+| `COZMO01_AUTO_COOLDOWN_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:4267` |
+| `COZMO01_CLIP_ACK_S` | `'0.45'` | `src/cozmo_companion/core/motor_cozmo.py:4227` |
 | `COZMO01_DISCONNECT_PAUSE_S` | `os.environ.get('COZMO_DISCONNECT_PAUSE_S', '5')` | `src/cozmo_companion/core/companion.py:1145` |
-| `COZMO01_DRAIN_S` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:4125` |
+| `COZMO01_DRAIN_S` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:4138` |
 | `COZMO01_EMERG_COOLDOWN_S` | `'3'` | `src/cozmo_companion/core/cozmo01_recovery.py:83` |
 | `COZMO01_EMERG_MIN_S` | `'4'` | `src/cozmo_companion/core/cozmo01_recovery.py:129` |
-| `COZMO01_KEEPER_RX_DEAD_MAX_S` | `'180'` | `src/cozmo_companion/core/cozmo01_recovery.py:144` |
+| `COZMO01_KEEPER_RX_DEAD_MAX_S` | `'8'` | `src/cozmo_companion/core/cozmo01_recovery.py:144` |
 | `COZMO01_LOG_DEBOUNCE_S` | `'300'` | `src/cozmo_companion/core/companion_legacy.py:2611` |
 | `COZMO01_OLED_RECENT_S` | `'45'` | `src/cozmo_companion/core/motor_cozmo.py:801` |
-| `COZMO01_PING_GAP_S` | `'0.12'` | `src/cozmo_companion/core/motor_cozmo.py:4161` |
+| `COZMO01_PING_GAP_S` | `'0.12'` | `src/cozmo_companion/core/motor_cozmo.py:4174` |
 | `COZMO01_PREVENT_DTX` | `'150'` | `src/cozmo_companion/core/cozmo01_recovery.py:49` |
 | `COZMO01_RESET_COOLDOWN_S` | `'10'` | `src/cozmo_companion/core/cozmo01_recovery.py:84` |
 | `COZMO01_RESET_FAILS` | `'3'` | `src/cozmo_companion/core/cozmo01_recovery.py:118` |
 | `COZMO01_RESET_STALL_TICKS` | `'2'` | `src/cozmo_companion/core/cozmo01_recovery.py:119` |
 | `COZMO01_RX_DEAD_MAX_S` | `'12'` | `src/cozmo_companion/core/cozmo01_recovery.py:159` |
-| `COZMO01_RX_DEAD_ROUTE_S` | `'90'` | `src/cozmo_companion/core/companion.py:1307`<br>`src/cozmo_companion/core/cozmo01_recovery.py:163`<br>`src/cozmo_companion/core/motor_cozmo.py:4153` |
-| `COZMO01_RX_DEAD_S` | `'8'` | `src/cozmo_companion/core/conexao.py:657`<br>`src/cozmo_companion/core/motor_cozmo.py:4151` |
-| `COZMO01_SLEEP_TIMEOUT_S` | `'120'` | `src/cozmo_companion/core/motor_cozmo.py:4155` |
+| `COZMO01_RX_DEAD_ROUTE_S` | `'20'`, `'90'` | `src/cozmo_companion/core/companion.py:1307`<br>`src/cozmo_companion/core/cozmo01_recovery.py:163`<br>`src/cozmo_companion/core/motor_cozmo.py:4166` |
+| `COZMO01_RX_DEAD_S` | `'8'` | `src/cozmo_companion/core/conexao.py:657`<br>`src/cozmo_companion/core/motor_cozmo.py:4164` |
+| `COZMO01_SLEEP_TIMEOUT_S` | `'120'` | `src/cozmo_companion/core/motor_cozmo.py:4168` |
 | `COZMO01_STALL_MAX_S` | `'10'` | `src/cozmo_companion/core/cozmo01_recovery.py:128` |
 | `COZMO01_WATCHDOG_COOLDOWN_S` | `'20'` | `src/cozmo_companion/core/companion.py:1309` |
 | `COZMO01_WATCHDOG_S` | `'30'` | `src/cozmo_companion/core/companion.py:1303` |
 | `COZMO_ALLOW_MULTI` | `'0'` | `src/cozmo_companion/core/singleton.py:18` |
 | `COZMO_ANIM_BASE_HOLD_S` | `'2.5'`, `'4'` | `src/cozmo_companion/core/companion.py:521`<br>`src/cozmo_companion/core/companion_legacy.py:796`<br>`src/cozmo_companion/core/companion_legacy.py:3060`<br>`src/cozmo_companion/core/companion_legacy.py:3046`<br>`src/cozmo_companion/core/motor_cozmo.py:503` |
 | `COZMO_ANIM_CARGA_S` | `'180'` | `src/cozmo_companion/core/charger.py:795` |
-| `COZMO_ANIM_SOURCE_FPS` | `'30'` | `src/cozmo_companion/core/motor_cozmo.py:1598` |
+| `COZMO_ANIM_SOURCE_FPS` | `'30'` | `src/cozmo_companion/core/motor_cozmo.py:1605` |
 | `COZMO_ANIM_TRAVADA_S` | `'6'` | `src/cozmo_companion/core/motor_cozmo.py:773` |
-| `COZMO_BASE_CLIP_DRAIN_S` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:1664` |
-| `COZMO_BASE_CLIP_LOOP_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:1722` |
-| `COZMO_BASE_CLIP_MAX_S` | `'12'` | `src/cozmo_companion/core/motor_cozmo.py:1429` |
-| `COZMO_BASE_CLIP_REPLAY_MIN_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:2363` |
+| `COZMO_BASE_CLIP_DRAIN_S` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:1671` |
+| `COZMO_BASE_CLIP_LOOP_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:1729` |
+| `COZMO_BASE_CLIP_MAX_S` | `'12'` | `src/cozmo_companion/core/motor_cozmo.py:1436` |
+| `COZMO_BASE_CLIP_REPLAY_MIN_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:2370` |
 | `COZMO_BASE_DESPERTAR_S` | `'35'` | `src/cozmo_companion/core/companion.py:1416` |
-| `COZMO_BASE_FACE_HZ` | `'0.25'` | `src/cozmo_companion/core/motor_cozmo.py:3938` |
-| `COZMO_BASE_FULL_KEEPER_HZ` | `'4'`, `'7'` | `src/cozmo_companion/core/motor_cozmo.py:1585`<br>`src/cozmo_companion/core/motor_cozmo.py:3252` |
+| `COZMO_BASE_FACE_HZ` | `'0.25'` | `src/cozmo_companion/core/motor_cozmo.py:3951` |
+| `COZMO_BASE_FULL_KEEPER_HZ` | `'4'`, `'7'` | `src/cozmo_companion/core/motor_cozmo.py:1592`<br>`src/cozmo_companion/core/motor_cozmo.py:3265` |
 | `COZMO_BASE_HEAD_MAX_DEG` | `'6'` | `src/cozmo_companion/core/anim_base_patch.py:45` |
-| `COZMO_BASE_IDLE_PESO` | `'0.35'` | `src/cozmo_companion/core/motor_cozmo.py:1088` |
-| `COZMO_BASE_KEEPER_VIVO` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:3136`<br>`src/cozmo_companion/core/motor_cozmo.py:4739`<br>`src/cozmo_companion/core/motor_cozmo.py:1269`<br>`src/cozmo_companion/core/motor_cozmo.py:3222`<br>`src/cozmo_companion/core/motor_cozmo.py:3897`<br>`src/cozmo_companion/core/motor_cozmo.py:4510`<br>`src/cozmo_companion/core/motor_cozmo.py:3621` |
-| `COZMO_BASE_OLED_ANIMATED` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:1487` |
-| `COZMO_BASE_OLED_ANIM_LOOP` | `'auto'` | `src/cozmo_companion/core/motor_cozmo.py:1445` |
-| `COZMO_BASE_OLED_CHARGER` | `'1'` | `src/cozmo_companion/core/conexao.py:944`<br>`src/cozmo_companion/core/fila_cozmo.py:352`<br>`src/cozmo_companion/core/motor_cozmo.py:1337`<br>`src/cozmo_companion/core/motor_cozmo.py:2155` |
-| `COZMO_BASE_OLED_CHARGER_FULL` | `'0'` | `src/cozmo_companion/core/conexao.py:945`<br>`src/cozmo_companion/core/motor_cozmo.py:1321` |
+| `COZMO_BASE_IDLE_PESO` | `'0.35'` | `src/cozmo_companion/core/motor_cozmo.py:1095` |
+| `COZMO_BASE_KEEPER_VIVO` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:3149`<br>`src/cozmo_companion/core/motor_cozmo.py:4752`<br>`src/cozmo_companion/core/motor_cozmo.py:1276`<br>`src/cozmo_companion/core/motor_cozmo.py:3235`<br>`src/cozmo_companion/core/motor_cozmo.py:3910`<br>`src/cozmo_companion/core/motor_cozmo.py:4523`<br>`src/cozmo_companion/core/motor_cozmo.py:3634` |
+| `COZMO_BASE_OLED_ANIMATED` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:1494` |
+| `COZMO_BASE_OLED_ANIM_LOOP` | `'auto'` | `src/cozmo_companion/core/motor_cozmo.py:1452` |
+| `COZMO_BASE_OLED_CHARGER` | `'1'` | `src/cozmo_companion/core/conexao.py:944`<br>`src/cozmo_companion/core/fila_cozmo.py:352`<br>`src/cozmo_companion/core/motor_cozmo.py:1344`<br>`src/cozmo_companion/core/motor_cozmo.py:2162` |
+| `COZMO_BASE_OLED_CHARGER_FULL` | `'0'` | `src/cozmo_companion/core/conexao.py:945`<br>`src/cozmo_companion/core/motor_cozmo.py:1328` |
 | `COZMO_BASE_OLED_HOLD_MAX_S` | `'12'`, `'15'` | `src/cozmo_companion/core/fila_cozmo.py:118`<br>`src/cozmo_companion/core/motor_cozmo.py:437`<br>`src/cozmo_companion/notifications/core/handler.py:169` |
 | `COZMO_BASE_OLED_HOLD_STACK` | `'2.5'` | `src/cozmo_companion/core/motor_cozmo.py:442` |
-| `COZMO_BASE_OLED_KEEPALIVE` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2542`<br>`src/cozmo_companion/core/motor_cozmo.py:1451` |
-| `COZMO_BASE_OLED_KEEPALIVE_HZ` | `'5'` | `src/cozmo_companion/core/motor_cozmo.py:2460` |
-| `COZMO_BASE_OLED_LOOP_BACKOFF_S` | `'240'` | `src/cozmo_companion/core/motor_cozmo.py:1498` |
-| `COZMO_BASE_OLED_MANTER_EM_STALL` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2480` |
-| `COZMO_BASE_OLED_MIN` | `'1'` | `src/cozmo_companion/core/conexao.py:947`<br>`src/cozmo_companion/core/motor_cozmo.py:3752`<br>`src/cozmo_companion/core/motor_cozmo.py:3694` |
-| `COZMO_BASE_OLED_MIN_FRAMES` | `'8'` | `src/cozmo_companion/core/anim_base_patch.py:155`<br>`src/cozmo_companion/core/motor_cozmo.py:1117`<br>`src/cozmo_companion/core/motor_cozmo.py:2258`<br>`src/cozmo_companion/core/motor_cozmo.py:2355` |
-| `COZMO_BASE_OLED_MODE` | `'proc'` | `src/cozmo_companion/core/motor_cozmo.py:1453`<br>`src/cozmo_companion/core/motor_cozmo.py:3737` |
-| `COZMO_BASE_OLED_STALL_HZ` | `'1.0'` | `src/cozmo_companion/core/motor_cozmo.py:2487` |
-| `COZMO_BASE_OLED_TX_RX_STALL_GRACE_S` | `'180'` | `src/cozmo_companion/core/motor_cozmo.py:838` |
+| `COZMO_BASE_OLED_KEEPALIVE` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2555`<br>`src/cozmo_companion/core/motor_cozmo.py:1458` |
+| `COZMO_BASE_OLED_KEEPALIVE_HZ` | `'5'` | `src/cozmo_companion/core/motor_cozmo.py:2467` |
+| `COZMO_BASE_OLED_LOOP_BACKOFF_S` | `'240'` | `src/cozmo_companion/core/motor_cozmo.py:1505` |
+| `COZMO_BASE_OLED_MANTER_EM_STALL` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2486` |
+| `COZMO_BASE_OLED_MIN` | `'1'` | `src/cozmo_companion/core/conexao.py:947`<br>`src/cozmo_companion/core/motor_cozmo.py:3765`<br>`src/cozmo_companion/core/motor_cozmo.py:3707` |
+| `COZMO_BASE_OLED_MIN_FRAMES` | `'8'` | `src/cozmo_companion/core/anim_base_patch.py:155`<br>`src/cozmo_companion/core/motor_cozmo.py:1124`<br>`src/cozmo_companion/core/motor_cozmo.py:2265`<br>`src/cozmo_companion/core/motor_cozmo.py:2362` |
+| `COZMO_BASE_OLED_MODE` | `'proc'` | `src/cozmo_companion/core/motor_cozmo.py:1460`<br>`src/cozmo_companion/core/motor_cozmo.py:3750` |
+| `COZMO_BASE_OLED_STALL_HZ` | `'0.25'` | `src/cozmo_companion/core/motor_cozmo.py:2500` |
+| `COZMO_BASE_OLED_TX_RX_STALL_GRACE_S` | `'180'` | `src/cozmo_companion/core/motor_cozmo.py:845` |
 | `COZMO_BASE_POOL_SEGURO` | `'1'` | `src/cozmo_companion/core/anims.py:583` |
-| `COZMO_BASE_PROC_HZ` | `'2'`, `'3'` | `src/cozmo_companion/core/motor_cozmo.py:3338`<br>`src/cozmo_companion/core/motor_cozmo.py:3601` |
-| `COZMO_BASE_PULSE_PROC` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3773` |
+| `COZMO_BASE_PROC_HZ` | `'2'`, `'3'` | `src/cozmo_companion/core/motor_cozmo.py:3351`<br>`src/cozmo_companion/core/motor_cozmo.py:3614` |
+| `COZMO_BASE_PULSE_PROC` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3786` |
 | `COZMO_BASE_SEMPRE_CARGA` | `'0'`, `None` | `src/cozmo_companion/__test__/test_charger.py:219`<br>`src/cozmo_companion/core/charger.py:141` |
 | `COZMO_BASE_STALL_PULSO_S` | `'1.5'` | `src/cozmo_companion/core/cozmo01_recovery.py:134` |
-| `COZMO_BASE_STOP_RODAS_CMD` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:891` |
-| `COZMO_BASE_TX_BACKPRESSURE_S` | `'1.5'` | `src/cozmo_companion/core/motor_cozmo.py:826` |
+| `COZMO_BASE_STOP_RODAS_CMD` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:898` |
+| `COZMO_BASE_TX_BACKPRESSURE_S` | `'1.5'` | `src/cozmo_companion/core/motor_cozmo.py:833` |
 | `COZMO_BASE_TX_STALL` | `'280'` | `src/cozmo_companion/core/config.py:25` |
-| `COZMO_BASE_VARIAR_ANTI_REPEAT` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:1081`<br>`src/cozmo_companion/core/motor_cozmo.py:1242`<br>`src/cozmo_companion/core/motor_cozmo.py:1553` |
-| `COZMO_BASE_VARIAR_CHANCE` | `'0.38'` | `src/cozmo_companion/core/motor_cozmo.py:1221` |
+| `COZMO_BASE_VARIAR_ANTI_REPEAT` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:1088`<br>`src/cozmo_companion/core/motor_cozmo.py:1249`<br>`src/cozmo_companion/core/motor_cozmo.py:1560` |
+| `COZMO_BASE_VARIAR_CHANCE` | `'0.38'` | `src/cozmo_companion/core/motor_cozmo.py:1228` |
 | `COZMO_BASE_VARIAR_EXTRA_MAX` | `'14'` | `src/cozmo_companion/core/anims.py:553` |
-| `COZMO_BASE_VARIAR_FORCADO_MIN_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:1217` |
-| `COZMO_BASE_VARIAR_JITTER_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:1633` |
-| `COZMO_BASE_VARIAR_LUZ` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:1173` |
-| `COZMO_BASE_VARIAR_MAX_S` | `'55'` | `src/cozmo_companion/core/motor_cozmo.py:1634` |
-| `COZMO_BASE_VARIAR_S` | `'32'`, `'38'` | `src/cozmo_companion/core/motor_cozmo.py:1632`<br>`src/cozmo_companion/core/motor_cozmo.py:1212` |
-| `COZMO_BASE_WAKE_ANIM` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:4085` |
+| `COZMO_BASE_VARIAR_FORCADO_MIN_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:1224` |
+| `COZMO_BASE_VARIAR_JITTER_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:1640` |
+| `COZMO_BASE_VARIAR_LUZ` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:1180` |
+| `COZMO_BASE_VARIAR_MAX_S` | `'55'` | `src/cozmo_companion/core/motor_cozmo.py:1641` |
+| `COZMO_BASE_VARIAR_S` | `'32'`, `'38'` | `src/cozmo_companion/core/motor_cozmo.py:1639`<br>`src/cozmo_companion/core/motor_cozmo.py:1219` |
+| `COZMO_BASE_WAKE_ANIM` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:4098` |
 | `COZMO_BOOT_ACORDADO` | `'1'` | `src/cozmo_companion/core/companion.py:1776`<br>`src/cozmo_companion/core/companion.py:1806` |
 | `COZMO_BOOT_FRESH_SESSION` | `'0'` | `src/cozmo_companion/core/companion.py:1241` |
 | `COZMO_BOOT_OI` | `'0'` | `src/cozmo_companion/core/companion_legacy.py:3173` |
@@ -147,15 +147,15 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_BOOT_RX_FRESH_MAX` | `'220'` | `src/cozmo_companion/core/conexao.py:801` |
 | `COZMO_BOOT_RX_MIN` | `'20'` | `src/cozmo_companion/core/conexao.py:809` |
 | `COZMO_BUFFER_CHEIO_HOLD_S` | `'3'` | `src/cozmo_companion/core/companion.py:698` |
-| `COZMO_CHARGER_AWAKE_IDLE` | `'IdleOnCharger'`, `None` | `src/cozmo_companion/core/motor_cozmo.py:1038`<br>`src/cozmo_companion/core/motor_cozmo.py:3026`<br>`src/cozmo_companion/core/motor_cozmo.py:1195`<br>`src/cozmo_companion/core/motor_cozmo.py:1174`<br>`src/cozmo_companion/core/motor_cozmo.py:1551`<br>`src/cozmo_companion/core/motor_cozmo.py:3236`<br>`src/cozmo_companion/core/motor_cozmo.py:4281` |
-| `COZMO_CHARGER_CLIP_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:1422` |
-| `COZMO_CHARGER_LOOP_PAUSE_S` | `'0.12'` | `src/cozmo_companion/core/motor_cozmo.py:1926` |
-| `COZMO_CHARGER_OLED_HZ` | `'1.5'`, `'2.5'`, `'4'` | `src/cozmo_companion/core/motor_cozmo.py:2874`<br>`src/cozmo_companion/core/motor_cozmo.py:1587`<br>`src/cozmo_companion/core/motor_cozmo.py:3318` |
-| `COZMO_CHARGER_OLED_KEEPER` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2099` |
-| `COZMO_CHARGER_PLAY_STREAM` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:1450`<br>`src/cozmo_companion/core/motor_cozmo.py:2130`<br>`src/cozmo_companion/core/motor_cozmo.py:2144` |
-| `COZMO_CHARGER_REPLAY_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:2876` |
-| `COZMO_CHARGER_STREAM_NA_CHEIA` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:2132` |
-| `COZMO_CHARGE_IDLE_S` | `'18'` | `src/cozmo_companion/core/charger.py:777`<br>`src/cozmo_companion/core/motor_cozmo.py:4627` |
+| `COZMO_CHARGER_AWAKE_IDLE` | `'IdleOnCharger'`, `None` | `src/cozmo_companion/core/motor_cozmo.py:1045`<br>`src/cozmo_companion/core/motor_cozmo.py:3039`<br>`src/cozmo_companion/core/motor_cozmo.py:1202`<br>`src/cozmo_companion/core/motor_cozmo.py:1181`<br>`src/cozmo_companion/core/motor_cozmo.py:1558`<br>`src/cozmo_companion/core/motor_cozmo.py:3249`<br>`src/cozmo_companion/core/motor_cozmo.py:4294` |
+| `COZMO_CHARGER_CLIP_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:1429` |
+| `COZMO_CHARGER_LOOP_PAUSE_S` | `'0.12'` | `src/cozmo_companion/core/motor_cozmo.py:1933` |
+| `COZMO_CHARGER_OLED_HZ` | `'1.5'`, `'2.5'`, `'4'` | `src/cozmo_companion/core/motor_cozmo.py:2887`<br>`src/cozmo_companion/core/motor_cozmo.py:1594`<br>`src/cozmo_companion/core/motor_cozmo.py:3331` |
+| `COZMO_CHARGER_OLED_KEEPER` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:2106` |
+| `COZMO_CHARGER_PLAY_STREAM` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:1457`<br>`src/cozmo_companion/core/motor_cozmo.py:2137`<br>`src/cozmo_companion/core/motor_cozmo.py:2151` |
+| `COZMO_CHARGER_REPLAY_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:2889` |
+| `COZMO_CHARGER_STREAM_NA_CHEIA` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:2139` |
+| `COZMO_CHARGE_IDLE_S` | `'18'` | `src/cozmo_companion/core/charger.py:777`<br>`src/cozmo_companion/core/motor_cozmo.py:4640` |
 | `COZMO_COMPANION_ROOT` | `''`, `'/mnt/G/PROJETOS/cozmo-companion'` | `src/cozmo_companion/core/conexao.py:17`<br>`src/cozmo_companion/core/paths.py:10`<br>`src/cozmo_companion/guardian/__main__.py:44` |
 | `COZMO_CONNECT_PAUSE_S` | `'5'` | `src/cozmo_companion/core/conexao.py:938` |
 | `COZMO_CONNECT_TIMEOUT` | `'30'` | `src/cozmo_companion/core/conexao.py:936` |
@@ -170,15 +170,15 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_ESCURO_AUTO` | `'1'` | `src/cozmo_companion/core/ambiente_escuro.py:18`<br>`src/cozmo_companion/core/face_watch.py:141`<br>`src/cozmo_companion/core/face_watch.py:186` |
 | `COZMO_ESCURO_CLARO` | `'50'` | `src/cozmo_companion/core/ambiente_escuro.py:20` |
 | `COZMO_ESCURO_DESPERTAR_S` | `'180'` | `src/cozmo_companion/core/ambiente_escuro.py:25`<br>`src/cozmo_companion/notifications/core/handler.py:123` |
-| `COZMO_ESCURO_ESPIAR_CHANCE` | `'0.38'` | `src/cozmo_companion/core/motor_cozmo.py:1302` |
-| `COZMO_ESCURO_ESPIAR_INTERVALO_S` | `'360'` | `src/cozmo_companion/core/motor_cozmo.py:1299` |
-| `COZMO_ESCURO_ESPIAR_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:1309` |
+| `COZMO_ESCURO_ESPIAR_CHANCE` | `'0.38'` | `src/cozmo_companion/core/motor_cozmo.py:1309` |
+| `COZMO_ESCURO_ESPIAR_INTERVALO_S` | `'360'` | `src/cozmo_companion/core/motor_cozmo.py:1306` |
+| `COZMO_ESCURO_ESPIAR_S` | `'14'` | `src/cozmo_companion/core/motor_cozmo.py:1316` |
 | `COZMO_ESCURO_LIM` | `'32'` | `src/cozmo_companion/core/ambiente_escuro.py:19` |
 | `COZMO_ESCURO_NA_BASE` | `'0'` | `src/cozmo_companion/core/ambiente_escuro.py:168` |
 | `COZMO_ESCURO_PROBE_DELAY_S` | `'300'` | `src/cozmo_companion/core/ambiente_escuro.py:24` |
 | `COZMO_ESCURO_PROBE_INTERVALO_S` | `'90'` | `src/cozmo_companion/core/ambiente_escuro.py:23` |
 | `COZMO_ESCURO_PROBE_S` | `'5'` | `src/cozmo_companion/core/ambiente_escuro.py:22` |
-| `COZMO_ESCURO_VARIAR_S` | `'75'` | `src/cozmo_companion/core/motor_cozmo.py:1210` |
+| `COZMO_ESCURO_VARIAR_S` | `'75'` | `src/cozmo_companion/core/motor_cozmo.py:1217` |
 | `COZMO_FACE_BASE` | `'0'`, `'1'` | `src/cozmo_companion/core/companion.py:1593`<br>`src/cozmo_companion/core/companion_legacy.py:509`<br>`src/cozmo_companion/core/companion_legacy.py:3206`<br>`src/cozmo_companion/core/face_watch.py:83`<br>`src/cozmo_companion/core/face_watch.py:133`<br>`src/cozmo_companion/core/face_watch.py:140`<br>`src/cozmo_companion/core/face_watch.py:216`<br>`src/cozmo_companion/core/vida.py:173`<br>`src/cozmo_companion/core/vida.py:759` |
 | `COZMO_FACE_BASE_FORCE` | `'0'` | `src/cozmo_companion/core/face_watch.py:134`<br>`src/cozmo_companion/core/face_watch.py:187` |
 | `COZMO_FACE_KEEP_S` | `'8'` | `src/cozmo_companion/core/companion.py:958` |
@@ -190,14 +190,14 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_FILA_ESTADO_MAX_S` | `'15'` | `src/cozmo_companion/core/fila_cozmo.py:685` |
 | `COZMO_FILA_QUIET_S` | `'0.8'` | `src/cozmo_companion/core/fila_cozmo.py:156`<br>`src/cozmo_companion/notifications/core/handler.py:161` |
 | `COZMO_FILA_TIMEOUT_S` | `'6'` | `src/cozmo_companion/core/fila_cozmo.py:153` |
-| `COZMO_FULL_CHARGE_WAKE` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3643` |
-| `COZMO_FULL_CHARGE_WAKE_S` | `'12'` | `src/cozmo_companion/core/motor_cozmo.py:3649` |
+| `COZMO_FULL_CHARGE_WAKE` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3656` |
+| `COZMO_FULL_CHARGE_WAKE_S` | `'12'` | `src/cozmo_companion/core/motor_cozmo.py:3662` |
 | `COZMO_INPLACE_FAIL_MAX` | `'2'`, `'3'` | `src/cozmo_companion/core/companion.py:1080`<br>`src/cozmo_companion/core/companion_legacy.py:2607`<br>`src/cozmo_companion/core/companion_legacy.py:2712`<br>`src/cozmo_companion/core/companion_legacy.py:1843` |
 | `COZMO_INPLACE_PAUSE_S` | `'1.5'` | `src/cozmo_companion/core/conexao.py:846` |
 | `COZMO_INPLACE_QUIET_S` | `'20'` | `src/cozmo_companion/core/companion_legacy.py:2898` |
 | `COZMO_IP` | `'172.31.1.1'` | `src/cozmo_companion/core/conexao.py:18`<br>`src/cozmo_companion/core/radio_keepalive.py:52` |
 | `COZMO_KEEPALIVE_S` | `'10'`, `'8'` | `src/cozmo_companion/core/companion.py:1272`<br>`src/cozmo_companion/core/companion_legacy.py:2763` |
-| `COZMO_KEEPER_DURING_TTS` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3369` |
+| `COZMO_KEEPER_DURING_TTS` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:3382` |
 | `COZMO_LED_BASE_BRILHO` | `'0.12'` | `src/cozmo_companion/core/leds.py:39` |
 | `COZMO_LED_BASE_PASSO_S` | `'0.4'` | `src/cozmo_companion/core/leds.py:48` |
 | `COZMO_LED_LIVRE_MAX_S` | `'5.0'` | `src/cozmo_companion/core/leds.py:60` |
@@ -224,24 +224,25 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_OFFLINE_BACKOFF_S` | `'120'` | `src/cozmo_companion/core/companion.py:2000` |
 | `COZMO_OFFLINE_LOG_S` | `'300'` | `src/cozmo_companion/core/conexao.py:236` |
 | `COZMO_OFFLINE_QUIET_S` | `'45'` | `src/cozmo_companion/core/companion.py:1351` |
-| `COZMO_OLED_DIRECT` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:4504` |
+| `COZMO_OLED_DIRECT` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:4517` |
 | `COZMO_OLED_FONT_SIZE` | `'10'` | `src/cozmo_companion/display/face.py:24` |
 | `COZMO_OLED_HZ_AMARELO` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:90` |
 | `COZMO_OLED_HZ_LARANJA` | `'1'` | `src/cozmo_companion/core/motor_cozmo.py:91` |
 | `COZMO_OLED_HZ_VERDE` | `str(base_hz)` | `src/cozmo_companion/core/motor_cozmo.py:89` |
 | `COZMO_OLED_HZ_VERMELHO` | `'1.0'` | `src/cozmo_companion/core/motor_cozmo.py:92` |
-| `COZMO_OLED_KEEPALIVE_S` | `'0.45'` | `src/cozmo_companion/core/motor_cozmo.py:3949` |
+| `COZMO_OLED_KEEPALIVE_S` | `'0.45'` | `src/cozmo_companion/core/motor_cozmo.py:3962` |
 | `COZMO_OLED_MAX_ESTATICO_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:579` |
-| `COZMO_OLED_NA_BASE` | `'0'` | `src/cozmo_companion/core/companion.py:426`<br>`src/cozmo_companion/core/fila_cozmo.py:351`<br>`src/cozmo_companion/core/motor_cozmo.py:4495` |
+| `COZMO_OLED_NA_BASE` | `'0'` | `src/cozmo_companion/core/companion.py:426`<br>`src/cozmo_companion/core/fila_cozmo.py:351`<br>`src/cozmo_companion/core/motor_cozmo.py:4508` |
 | `COZMO_OLED_PHASE_UPGRADE_S` | `'45'` | `src/cozmo_companion/core/motor_cozmo.py:111` |
-| `COZMO_OLED_REFRESH_S` | `'12'`, `'2.5'` | `src/cozmo_companion/core/motor_cozmo.py:3941`<br>`src/cozmo_companion/display/face.py:143` |
-| `COZMO_OLED_RESCUE_MIN_BYTES` | `'64'` | `src/cozmo_companion/core/motor_cozmo.py:2166` |
+| `COZMO_OLED_REFRESH_S` | `'12'`, `'2.5'` | `src/cozmo_companion/core/motor_cozmo.py:3954`<br>`src/cozmo_companion/display/face.py:143` |
+| `COZMO_OLED_RESCUE_MIN_BYTES` | `'64'` | `src/cozmo_companion/core/motor_cozmo.py:2173` |
 | `COZMO_OLED_RESCUE_RECENT_S` | `'15'` | `src/cozmo_companion/core/motor_cozmo.py:811` |
+| `COZMO_OLED_RESCUE_STALL_GRACE_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:815`<br>`src/cozmo_companion/core/motor_cozmo.py:2494` |
 | `COZMO_OLED_VERDE_KEEPER_HZ` | `'0'` | `src/cozmo_companion/core/motor_cozmo.py:124` |
 | `COZMO_OLED_WATCHDOG_S` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:673` |
-| `COZMO_PING_INTERVAL_S` | `'0.5'` | `src/cozmo_companion/core/motor_cozmo.py:3820` |
+| `COZMO_PING_INTERVAL_S` | `'0.5'` | `src/cozmo_companion/core/motor_cozmo.py:3833` |
 | `COZMO_PING_OOB_S` | `'4.5'` | `src/cozmo_companion/core/companion_legacy.py:3100` |
-| `COZMO_PING_PRE_CLIP` | `'2'` | `src/cozmo_companion/core/motor_cozmo.py:2316` |
+| `COZMO_PING_PRE_CLIP` | `'2'` | `src/cozmo_companion/core/motor_cozmo.py:2323` |
 | `COZMO_PING_TIMEOUT_S` | `'4'` | `src/cozmo_companion/core/conexao.py:137` |
 | `COZMO_POST_RECONNECT_S` | `'10'`, `'22'`, `'35'`, `'60'` | `src/cozmo_companion/core/companion.py:258`<br>`src/cozmo_companion/core/companion.py:373`<br>`src/cozmo_companion/core/companion.py:385`<br>`src/cozmo_companion/core/companion.py:1132`<br>`src/cozmo_companion/core/companion_legacy.py:443`<br>`src/cozmo_companion/core/companion_legacy.py:453`<br>`src/cozmo_companion/core/companion_legacy.py:2624`<br>`src/cozmo_companion/core/companion_legacy.py:2663`<br>`src/cozmo_companion/core/companion_legacy.py:3164`<br>`src/cozmo_companion/core/companion_legacy.py:1832`<br>`src/cozmo_companion/core/companion_legacy.py:1847`<br>`src/cozmo_companion/core/limites.py:34` |
 | `COZMO_POST_TTS_RECONNECT` | `'0'` | `src/cozmo_companion/core/companion_legacy.py:2710` |
@@ -250,8 +251,8 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_PPCLIP_RX_STALL_S` | `'120'` | `src/cozmo_companion/core/conexao.py:651` |
 | `COZMO_PREVENT_DTX` | `'220'` | `src/cozmo_companion/core/companion_legacy.py:2799` |
 | `COZMO_PROC_CHARGE_IDLE` | `'0'` | `src/cozmo_companion/core/charger.py:789` |
-| `COZMO_PROC_FACE` | `'1'` | `src/cozmo_companion/core/companion.py:304`<br>`src/cozmo_companion/core/companion_legacy.py:3090`<br>`src/cozmo_companion/core/companion_legacy.py:1869`<br>`src/cozmo_companion/core/companion_legacy.py:1931`<br>`src/cozmo_companion/core/conexao.py:952`<br>`src/cozmo_companion/core/motor_cozmo.py:4042`<br>`src/cozmo_companion/core/motor_cozmo.py:4394`<br>`src/cozmo_companion/core/motor_cozmo.py:4487`<br>`src/cozmo_companion/display/face.py:129` |
-| `COZMO_PROC_FACE_BASE` | `'0'`, `'1'` | `src/cozmo_companion/core/charger.py:796`<br>`src/cozmo_companion/core/companion.py:303`<br>`src/cozmo_companion/core/companion_legacy.py:2937`<br>`src/cozmo_companion/core/conexao.py:852`<br>`src/cozmo_companion/core/face_watch.py:421`<br>`src/cozmo_companion/core/motor_cozmo.py:2111`<br>`src/cozmo_companion/core/motor_cozmo.py:4001`<br>`src/cozmo_companion/core/motor_cozmo.py:3886`<br>`src/cozmo_companion/core/motor_cozmo.py:4040`<br>`src/cozmo_companion/core/vida.py:229`<br>`src/cozmo_companion/core/vida.py:560` |
+| `COZMO_PROC_FACE` | `'1'` | `src/cozmo_companion/core/companion.py:304`<br>`src/cozmo_companion/core/companion_legacy.py:3090`<br>`src/cozmo_companion/core/companion_legacy.py:1869`<br>`src/cozmo_companion/core/companion_legacy.py:1931`<br>`src/cozmo_companion/core/conexao.py:952`<br>`src/cozmo_companion/core/motor_cozmo.py:4055`<br>`src/cozmo_companion/core/motor_cozmo.py:4407`<br>`src/cozmo_companion/core/motor_cozmo.py:4500`<br>`src/cozmo_companion/display/face.py:129` |
+| `COZMO_PROC_FACE_BASE` | `'0'`, `'1'` | `src/cozmo_companion/core/charger.py:796`<br>`src/cozmo_companion/core/companion.py:303`<br>`src/cozmo_companion/core/companion_legacy.py:2937`<br>`src/cozmo_companion/core/conexao.py:852`<br>`src/cozmo_companion/core/face_watch.py:421`<br>`src/cozmo_companion/core/motor_cozmo.py:2118`<br>`src/cozmo_companion/core/motor_cozmo.py:4014`<br>`src/cozmo_companion/core/motor_cozmo.py:3899`<br>`src/cozmo_companion/core/motor_cozmo.py:4053`<br>`src/cozmo_companion/core/vida.py:229`<br>`src/cozmo_companion/core/vida.py:560` |
 | `COZMO_PROC_RX_STALL_S` | `'120'` | `src/cozmo_companion/core/config.py:27` |
 | `COZMO_PROC_STALL_RATIO_MAX` | `'8.0'` | `src/cozmo_companion/core/conexao.py:652` |
 | `COZMO_RADIO_KEEPALIVE` | `'1'` | `src/cozmo_companion/core/radio_keepalive.py:27` |
@@ -267,8 +268,8 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_RECONNECT_MAX_S` | `'45'` | `src/cozmo_companion/core/conexao.py:1054` |
 | `COZMO_RECONNECT_S` | `'12'` | `src/cozmo_companion/core/conexao.py:1053` |
 | `COZMO_RECONNECT_WAIT_PING_S` | `'25'` | `src/cozmo_companion/core/companion.py:1134`<br>`src/cozmo_companion/core/companion_legacy.py:2626` |
-| `COZMO_RENOVAR_BASE_S` | `'20'` | `src/cozmo_companion/core/motor_cozmo.py:2677`<br>`src/cozmo_companion/core/motor_cozmo.py:2922` |
-| `COZMO_RENOVAR_FORCAR_MIN_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:2680` |
+| `COZMO_RENOVAR_BASE_S` | `'20'` | `src/cozmo_companion/core/motor_cozmo.py:2690`<br>`src/cozmo_companion/core/motor_cozmo.py:2935` |
+| `COZMO_RENOVAR_FORCAR_MIN_S` | `'8'` | `src/cozmo_companion/core/motor_cozmo.py:2693` |
 | `COZMO_RX_DEAD_RATIO` | `'8.0'` | `src/cozmo_companion/core/conexao.py:825` |
 | `COZMO_RX_MAX_ACUM` | `'1500'` | `src/cozmo_companion/core/companion_legacy.py:2797` |
 | `COZMO_RX_MIN_VIVO` | `'400'` | `src/cozmo_companion/core/companion_legacy.py:2283` |
@@ -285,8 +286,8 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_SHAKE_HITS` | `'3'` | `src/cozmo_companion/core/sensory_reactions.py:64` |
 | `COZMO_SHAKE_JERK` | `'0.85'` | `src/cozmo_companion/core/sensory_reactions.py:62` |
 | `COZMO_SHAKE_WINDOW_S` | `'1.25'` | `src/cozmo_companion/core/sensory_reactions.py:63` |
-| `COZMO_SLEEP_CLIP_HOLD_S` | `'22'`, `'28'` | `src/cozmo_companion/core/motor_cozmo.py:1629`<br>`src/cozmo_companion/core/motor_cozmo.py:1746` |
-| `COZMO_SLEEP_CLIP_JITTER_S` | `'10'` | `src/cozmo_companion/core/motor_cozmo.py:1630` |
+| `COZMO_SLEEP_CLIP_HOLD_S` | `'22'`, `'28'` | `src/cozmo_companion/core/motor_cozmo.py:1636`<br>`src/cozmo_companion/core/motor_cozmo.py:1753` |
+| `COZMO_SLEEP_CLIP_JITTER_S` | `'10'` | `src/cozmo_companion/core/motor_cozmo.py:1637` |
 | `COZMO_SLEEP_DURATION_JITTER_S` | `'120'` | `src/cozmo_companion/core/vida.py:76` |
 | `COZMO_SLEEP_DURATION_MIN` | `''` | `src/cozmo_companion/core/vida.py:73` |
 | `COZMO_SLEEP_INTERVAL_JITTER_S` | `'90'` | `src/cozmo_companion/core/vida.py:47` |
@@ -300,8 +301,8 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_STALL_TICKS` | `'3'` | `src/cozmo_companion/core/companion_legacy.py:2894` |
 | `COZMO_STT_IDLE_BASE` | `'1'` | `src/cozmo_companion/core/companion_legacy.py:557`<br>`src/cozmo_companion/core/companion_voz.py:167` |
 | `COZMO_STT_NA_BASE` | `'0'` | `src/cozmo_companion/core/companion_legacy.py:548`<br>`src/cozmo_companion/core/companion_voz.py:162` |
-| `COZMO_SYNC_BASE_RX_OFF_S` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:4060` |
-| `COZMO_SYNC_BASE_S` | `'5'`, `'8'` | `src/cozmo_companion/core/motor_cozmo.py:2782`<br>`src/cozmo_companion/core/motor_cozmo.py:4058` |
+| `COZMO_SYNC_BASE_RX_OFF_S` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:4073` |
+| `COZMO_SYNC_BASE_S` | `'5'`, `'8'` | `src/cozmo_companion/core/motor_cozmo.py:2795`<br>`src/cozmo_companion/core/motor_cozmo.py:4071` |
 | `COZMO_TELA_MANTEM_PROC_BASE` | `'1'` | `src/cozmo_companion/display/face.py:221`<br>`src/cozmo_companion/display/face.py:258` |
 | `COZMO_TTS_POST_QUIET_OK_S` | `'25'` | `src/cozmo_companion/core/companion_legacy.py:1795` |
 | `COZMO_TTS_POST_QUIET_S` | `'28'` | `src/cozmo_companion/core/companion_legacy.py:410`<br>`src/cozmo_companion/core/companion_legacy.py:1807`<br>`src/cozmo_companion/core/companion_voz.py:133`<br>`src/cozmo_companion/core/limites.py:36` |
@@ -566,4 +567,4 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `XDG_DATA_DIRS` | `'/usr/local/share:/usr/share'` | `src/cozmo_companion/notifications/core/apps.py:75` |
 | `XDG_RUNTIME_DIR` | `f'/run/user/{os.getuid()}'` | `src/cozmo_companion/voice/mic.py:84` |
 
-Total: **561** variáveis.
+Total: **562** variáveis.

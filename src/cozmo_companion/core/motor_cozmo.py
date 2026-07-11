@@ -810,7 +810,14 @@ def oled_resgate_recente(max_s: float | None = None) -> bool:
         if max_s is not None
         else float(os.environ.get("COZMO_OLED_RESCUE_RECENT_S", "15"))
     )
-    return _ultimo_exibir_clip_grupo == "resgate_oled" and oled_frame_recente(limite)
+    # O resgate é uma ponte curta enquanto o rádio drena. Renovar o timestamp
+    # para sempre mascara uma sessão UDP realmente morta e bloqueia o watchdog.
+    grace = float(os.environ.get("COZMO_OLED_RESCUE_STALL_GRACE_S", "8"))
+    return (
+        _ultimo_exibir_clip_grupo == "resgate_oled"
+        and oled_frame_recente(limite)
+        and rx_morto_s() <= grace
+    )
 
 
 def _keeper_segura_tx_backpressure() -> bool:
@@ -2472,10 +2479,9 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
             if _oled_keepalive_stop.wait(interval):
                 break
             continue
-        # RX travado: NÃO parar de enviar — o firmware apaga a OLED sem refresh
-        # em ~30s (tela preta que o usuário via a cada stall). Um único frame do
-        # último desenho a cada COZMO_BASE_OLED_STALL_HZ (bem lento) é tráfego
-        # mínimo e mantém a tela viva sem competir com o rádio.
+        # RX travado: mantenha a OLED só durante uma janela curta. Depois disso a
+        # sessão está realmente morta; continuar enviando frames mantém o buffer
+        # saturado e prende o firmware em COZMO 01.
         stall = not rx_link_ok()
         if stall and os.environ.get("COZMO_BASE_OLED_MANTER_EM_STALL", "1") != "1":
             if _oled_keepalive_stop.wait(interval):
@@ -2484,8 +2490,15 @@ def _loop_oled_keepalive_base(cli: "pycozmo.Client") -> None:
         intervalo_efetivo = interval
         hz_log = hz
         if stall:
-            stall_hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "1.0"))
-            stall_hz = max(0.5, min(2.0, stall_hz))
+            stall_grace = float(
+                os.environ.get("COZMO_OLED_RESCUE_STALL_GRACE_S", "8")
+            )
+            if rx_morto_s() > stall_grace:
+                if _oled_keepalive_stop.wait(min(interval, 0.5)):
+                    break
+                continue
+            stall_hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "0.25"))
+            stall_hz = max(0.1, min(1.0, stall_hz))
             hz_log = stall_hz
             intervalo_efetivo = 1.0 / stall_hz
         if ac.playing_audio and not _keeper_envia_durante_audio():

@@ -141,7 +141,7 @@ class RecuperadorCozmo01:
             ping_sessao_base(cli)
 
         rx_morto = rx_morto_s()
-        keeper_dead_max = float(os.environ.get("COZMO01_KEEPER_RX_DEAD_MAX_S", "180"))
+        keeper_dead_max = float(os.environ.get("COZMO01_KEEPER_RX_DEAD_MAX_S", "8"))
         if (
             not g.rx_ok
             and (oled_charger_vivo(cli) or oled_frame_recente())
@@ -160,7 +160,7 @@ class RecuperadorCozmo01:
         if cozmo_rota_ap():
             teto_morto = max(
                 teto_morto,
-                float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "90")),
+                float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "20")),
             )
         rx_morto_suficiente = rx_morto >= teto_morto
         if (

@@ -43,7 +43,7 @@ class TestSomReacao(unittest.TestCase):
         self.assertGreaterEqual(len(pkts), 12)
         self.assertTrue(all(len(getattr(pkt, "samples", b"")) == 744 for pkt in pkts))
 
-    def test_barulho_chama_animacao_oficial_sem_som_sintetico(self) -> None:
+    def test_barulho_chama_animacao_oficial_com_som_leve(self) -> None:
         c = FakeCompanion()
         with (
             patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
@@ -57,7 +57,7 @@ class TestSomReacao(unittest.TestCase):
             c._processar_stt()
         visual.assert_not_called()
         c._fila.enviar_anim.assert_called_once()
-        tocar.assert_not_called()
+        tocar.assert_called_once()
         c._vida.registrar_interacao.assert_called_once()
 
     def test_latido_texto_dispara_animacao_sem_som_sintetico(self) -> None:

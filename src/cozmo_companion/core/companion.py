@@ -762,8 +762,6 @@ class Companion(CompanionVoz):
         """Anti COZMO 01: stream 30fps na base; anim presa = cancela."""
         if not self._na_base_efetivo() or not self._base_usa_rosto_vivo():
             return
-        if self.tela._escuro and os.environ.get("SONO_TELA_ESCURA", "0") == "1":
-            return
         from cozmo_companion.core.motor_cozmo import (
             modo_sono_oled_ativo,
             religar_oled_acordado_base,
@@ -990,9 +988,6 @@ class Companion(CompanionVoz):
                     _garantir_base_oled_anim_loop(self.cli)
                 return
             return
-        if self.tela._escuro and os.environ.get("SONO_TELA_ESCURA", "0") == "1":
-            return
-
         if base_oled_usa_proc_vivo(self.cli):
             manter_proc_vivo_base(self.cli)
         elif base_oled_minimo_ativo(self.cli):
@@ -1641,7 +1636,9 @@ class Companion(CompanionVoz):
     def _loop_pet_autonomo(self) -> None:
         safety = self._safety_state()
         if not self._fila.ocupada and not self._falando:
-            self._luzes.tick(self.cli, na_base=safety.effective_base)
+            luzes = getattr(self, "_luzes", None)
+            if luzes is not None:
+                luzes.tick(self.cli, na_base=safety.effective_base)
         if self._vida.dormindo or self._falando or self._llm_ocupado:
             return
         livre = safety.movement_allowed

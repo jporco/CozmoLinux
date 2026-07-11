@@ -111,7 +111,8 @@ BASE_CAM_OFF_MAX = float(os.environ.get("BASE_CAM_OFF_MAX_S", "70"))
 BASE_CAM_ON_S = float(os.environ.get("BASE_CAM_ON_S", "14"))
 BASE_CAM_ON_MAX = float(os.environ.get("BASE_CAM_ON_MAX_S", "22"))
 SONO_AUTO = os.environ.get("SONO_AUTO", "1") == "1"
-SONO_TELA_ESCURA = os.environ.get("SONO_TELA_ESCURA", "0") == "1"
+# Regra atual do projeto: nunca apagar o OLED. Escuro usa animação de sono.
+SONO_TELA_ESCURA = False
 
 
 class Fase(Enum):

@@ -204,8 +204,6 @@ def modo_sono_oled_ativo() -> bool:
 
 def sono_oled_usa_texto() -> bool:
     """Legado: zZz estático — padrão é ppclip sleep (olhos animados)."""
-    if os.environ.get("SONO_TELA_ESCURA", "0") == "1":
-        return False
     return os.environ.get("COZMO_SONO_OLED_TEXTO", "0") == "1"
 
 
@@ -214,33 +212,21 @@ def sono_oled_texto_ativo() -> bool:
 
 
 def sono_tela_escura_ativo() -> bool:
-    return modo_sono_oled_ativo() and os.environ.get("SONO_TELA_ESCURA", "0") == "1"
+    # Regra atual: nunca apagar o OLED. Escuro = animação de sono.
+    return False
 
 
 def apagar_oled_para_sono(cli: "pycozmo.Client") -> None:
-    """Interrompe produtores OLED; Tela envia e mantém o quadro preto."""
+    """Compat legado: pedido de tela preta vira animação de sono."""
     definir_modo_sono_oled(True)
-    _parar_loop_clip_base(timeout=2.0)
-    _parar_display_keeper()
-    _parar_oled_keepalive_base()
-    try:
-        cli.cancel_anim()
-    except Exception:
-        pass
-    try:
-        cli.anim_controller.enable_animations(False)
-        cli.anim_controller.enable_procedural_face(False)
-    except Exception:
-        pass
+    logger.warning("SONO_TELA_ESCURA ignorado — mantendo OLED com animação de sono")
+    ativar_sono_ppclip(cli)
 
 
 def ativar_sono_ppclip(cli: "pycozmo.Client") -> bool:
     """Sono na base: loop ppclip oficial (Sleep/GoToSleep…) — olhos animados."""
     global _charger_stream_sessao, _charger_keeper_ativo, _sono_oled_texto_ativo
     definir_modo_sono_oled(True)
-    if sono_tela_escura_ativo():
-        apagar_oled_para_sono(cli)
-        return True
     if not sono_oled_usa_texto():
         _sono_oled_texto_ativo = False
     if sono_oled_usa_texto():
@@ -692,6 +678,9 @@ def vigiar_tela_congelada_base(cli: "pycozmo.Client") -> bool:
         return True
     if not base_oled_usa_charger(cli) or not _oled_sessao_viva(cli):
         return False
+    if _ultimo_exibir_clip_em <= 0:
+        logger.warning("Base OLED: sem frame registrado — semeando tela viva")
+        return modo_charger_oled(cli, forcar=True) or manter_oled_base_ativo(cli)
     if _oled_estatico_demais(cli) and _oled_tx_permitido(cli):
         return _forcar_movimento_oled_base(cli)
     if _base_oled_anim_loop_ativo() and not base_oled_loop_segurado():
@@ -1138,9 +1127,6 @@ def clip_sono_base_oled(cli: "pycozmo.Client") -> bool:
 
 def entrar_sono_base_oled(cli: "pycozmo.Client") -> bool:
     """Ativa modo sono: ppclip sleep (olhos) ou legado zZz se COZMO_SONO_OLED_TEXTO=1."""
-    if os.environ.get("SONO_TELA_ESCURA", "0") == "1":
-        apagar_oled_para_sono(cli)
-        return True
     if sono_oled_usa_texto():
         ativar_sono_oled_texto(cli)
         return True
@@ -4103,40 +4089,30 @@ def _drenar_fila_anim(cli: "pycozmo.Client") -> None:
 
 
 def detectar_cozmo01_suspeito(cli: "pycozmo.Client") -> bool:
-    """Ping OK na base: sem frame OLED recente — firmware pode estar em COZMO 01."""
-    from cozmo_companion.core.conexao import cozmo_alcanavel
+    """COZMO 01 só por RX morto, não por OLED atrasado.
+
+    Tela preta/sem frame com RX vivo é problema do produtor OLED; o watchdog deve
+    religar keeper/clip leve. Resetar UDP nesse caso derruba a sessão e faz o
+    firmware mostrar COZMO_01 sem necessidade.
+    """
+    from cozmo_companion.core.conexao import cozmo_alcanavel, cozmo_rota_ap
 
     if not cozmo_alcanavel():
         return False
-    if not rx_link_ok():
-        if _oled_tx_permitido(cli) and oled_frame_recente():
-            return False
-        dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
-        if _rx_off_desde > 0 and time.monotonic() - _rx_off_desde >= dead_s:
-            return True
+    if rx_link_ok():
         return False
-    if base_oled_loop_segurado():
+    if _oled_tx_permitido(cli) and oled_frame_recente():
         return False
-    if not base_oled_usa_charger(cli) and not base_oled_carga_cheia_ativo(cli):
+    if base_oled_loop_segurado() or _rx_off_desde <= 0:
         return False
-    if _base_oled_animado_desativado():
-        return False
-    if _ultimo_exibir_clip_em <= 0:
-        return False
-    ac = cli.anim_controller
-    if ac.playing_audio is True or ac.playing_animation is True:
-        return False
-    if _clip_loop_vivo() and _charger_anim_em_play(cli):
-        return False
-    if modo_sono_oled_ativo() and _clip_loop_vivo():
-        return False
-    timeout = float(os.environ.get("COZMO01_OLED_TIMEOUT_S", "18"))
-    if _base_oled_anim_loop_ativo() and _clip_loop_vivo():
-        clip_max = float(os.environ.get("COZMO_BASE_CLIP_MAX_S", "16"))
-        timeout = min(_oled_max_estatico_s(), max(timeout, clip_max + 2.0))
+
+    morto_s = time.monotonic() - _rx_off_desde
+    dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
+    if cozmo_rota_ap():
+        dead_s = max(dead_s, float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "90")))
     if modo_sono_oled_ativo():
-        timeout = max(timeout, float(os.environ.get("COZMO01_SLEEP_TIMEOUT_S", "50")))
-    return time.monotonic() - _ultimo_exibir_clip_em >= timeout
+        dead_s = max(dead_s, float(os.environ.get("COZMO01_SLEEP_TIMEOUT_S", "120")))
+    return morto_s >= dead_s
 
 
 def _pulso_recuperar_rx(cli: "pycozmo.Client", *, tentativas: int = 5) -> bool:

@@ -934,7 +934,7 @@ class TestMotorCozmo(unittest.TestCase):
     ) -> None:
         motor._ultimo_exibir_clip_em = time.monotonic() - 40.0
         cli = MagicMock()
-        self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
+        self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
         motor._ultimo_exibir_clip_em = time.monotonic()
         self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
 
@@ -968,7 +968,9 @@ class TestMotorCozmo(unittest.TestCase):
         with patch.dict(os.environ, {"COZMO_BASE_OLED_TX_RX_STALL_GRACE_S": "180"}):
             self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
         motor._ultimo_exibir_clip_em = time.monotonic() - 120.0
-        self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
+        self.assertFalse(motor.detectar_cozmo01_suspeito(cli))
+        with patch.dict(os.environ, {"COZMO01_RX_DEAD_ROUTE_S": "20"}):
+            self.assertTrue(motor.detectar_cozmo01_suspeito(cli))
         motor._rx_off_desde = 0.0
         motor._ultimo_exibir_clip_em = 0.0
 

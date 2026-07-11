@@ -133,10 +133,10 @@ def ajustar_oled_fase_link(cli: "pycozmo.Client", fase: str) -> bool:
         grupo = _charger_oled_nome or "IdleOnCharger"
     if fase == "verde":
         # O HW5 continua enviando telemetria mesmo quando a tela já caiu em
-        # COZMO 01. Acima de ~3 Hz o keeper acumulou dtx>600 por janela e
-        # saturou o firmware; portanto verde significa estável, não licença
-        # para acelerar o OLED sem limite.
-        teto_hw5 = float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "3"))
+        # COZMO 01. No robô real, 3 Hz ainda acumulou dtx>580 e matou o RX;
+        # 1,5 Hz ficou estável por vários minutos. O passo de quadros preserva
+        # a duração/variedade das expressões apesar da taxa baixa.
+        teto_hw5 = float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "1.5"))
         hz = max(1.0, min(max(1.0, teto_hw5), verde_keeper_hz))
     else:
         hz = oled_hz_para_fase(fase, _keeper_clip_hz(cli))

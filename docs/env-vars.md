@@ -231,7 +231,7 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_OLED_HZ_VERDE` | `str(base_hz)` | `src/cozmo_companion/core/motor_cozmo.py:89` |
 | `COZMO_OLED_HZ_VERMELHO` | `'1.0'` | `src/cozmo_companion/core/motor_cozmo.py:92` |
 | `COZMO_OLED_KEEPALIVE_S` | `'0.45'` | `src/cozmo_companion/core/motor_cozmo.py:3967` |
-| `COZMO_OLED_KEEPER_MAX_HZ` | `'3'` | `src/cozmo_companion/core/motor_cozmo.py:139` |
+| `COZMO_OLED_KEEPER_MAX_HZ` | `'1.5'` | `src/cozmo_companion/core/motor_cozmo.py:139` |
 | `COZMO_OLED_MAX_ESTATICO_S` | `'18'` | `src/cozmo_companion/core/motor_cozmo.py:584` |
 | `COZMO_OLED_NA_BASE` | `'0'` | `src/cozmo_companion/core/companion.py:426`<br>`src/cozmo_companion/core/fila_cozmo.py:351`<br>`src/cozmo_companion/core/motor_cozmo.py:4513` |
 | `COZMO_OLED_PHASE_UPGRADE_S` | `'45'` | `src/cozmo_companion/core/motor_cozmo.py:111` |

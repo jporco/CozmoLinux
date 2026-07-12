@@ -26,6 +26,13 @@ def _tick(*, rx_ok: bool = True) -> TickGovernador:
 
 
 class TestRecuperadorCozmo01(unittest.TestCase):
+    def setUp(self) -> None:
+        self._env = patch.dict(os.environ, {"COZMO_BASE_STABLE_OLED": "0"})
+        self._env.start()
+
+    def tearDown(self) -> None:
+        self._env.stop()
+
     def test_stall_só_zera_com_drx(self) -> None:
         rec = RecuperadorCozmo01()
         cli = MagicMock()
@@ -145,6 +152,47 @@ class TestRecuperadorCozmo01(unittest.TestCase):
                     )
         self.assertTrue(r.reset_udp)
         self.assertEqual(rec.cozmo01_falhas, 0)
+
+    @patch("cozmo_companion.core.cozmo01_recovery.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.cozmo01_recovery.cozmo_rota_ap", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.rx_morto_s", return_value=30.0)
+    @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.detectar_cozmo01_suspeito", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.recuperar_cozmo01_auto", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.oled_charger_vivo", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.oled_frame_recente", return_value=False)
+    @patch("cozmo_companion.core.motor_cozmo.cortar_flood_udp_base")
+    def test_modo_estavel_bloqueia_reset_udp(self, *_mocks) -> None:
+        rec = RecuperadorCozmo01()
+        rec.cozmo01_falhas = 3
+        cli = MagicMock()
+        monitor = MagicMock()
+        med = MagicMock()
+        med.amostra.return_value = (0, 400, 0.0)
+        g = _tick(rx_ok=False)
+        reconnect = MagicMock(return_value=True)
+        with patch.dict(
+            os.environ,
+            {
+                "COZMO_BASE_STABLE_OLED": "1",
+                "COZMO_BASE_STABLE_ALLOW_RESET": "0",
+                "COZMO01_RESET_FAILS": "1",
+            },
+        ):
+            r = rec.tick_base(
+                cli,
+                g,
+                monitor,
+                med,
+                busy=False,
+                quieto=False,
+                na_base=True,
+                ultimo_reconnect_udp=0.0,
+                reconnect_udp=reconnect,
+                recuperar_inplace=lambda: True,
+            )
+        self.assertFalse(r.reset_udp)
+        reconnect.assert_not_called()
 
     @patch("cozmo_companion.core.cozmo01_recovery.cozmo_alcanavel", return_value=True)
     @patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False)

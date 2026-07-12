@@ -49,6 +49,21 @@ def prevent_dtx_base() -> int:
     return int(os.environ.get("COZMO01_PREVENT_DTX", "150"))
 
 
+def reset_udp_permitido_no_modo_atual() -> bool:
+    """Reset UDP só fora do OLED estável, salvo override explícito.
+
+    No modo estável a tela deve continuar com keeper/clip e recuperação in-place.
+    Disconnect UDP é o caminho que faz o firmware mostrar COZMO 01.
+    """
+    if not permitir_reset_udp_cozmo01():
+        return False
+    from cozmo_companion.core.motor_cozmo import base_oled_stable_only
+
+    if not base_oled_stable_only():
+        return True
+    return os.environ.get("COZMO_BASE_STABLE_ALLOW_RESET", "0") == "1"
+
+
 class RecuperadorCozmo01:
     """Contadores + decisão in-place vs reset UDP."""
 
@@ -171,7 +186,7 @@ class RecuperadorCozmo01:
         if (
             not g.rx_ok
             and rx_morto_suficiente
-            and permitir_reset_udp_cozmo01()
+            and reset_udp_permitido_no_modo_atual()
             and agora - ultimo_reconnect_udp >= self._cooldown_reset(emergencia=True)
         ):
             logger.warning(
@@ -209,7 +224,7 @@ class RecuperadorCozmo01:
 
         cooldown = self._cooldown_reset(emergencia=emergencia)
         pode_reset = (
-            permitir_reset_udp_cozmo01()
+            reset_udp_permitido_no_modo_atual()
             and agora - ultimo_reconnect_udp >= cooldown
         )
 

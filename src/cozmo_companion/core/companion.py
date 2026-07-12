@@ -1099,6 +1099,18 @@ class Companion(CompanionVoz):
         cozmo01: bool = False,
     ) -> bool:
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
+        if reset_cozmo01:
+            from cozmo_companion.core.cozmo01_recovery import (
+                reset_udp_permitido_no_modo_atual,
+            )
+
+            if not reset_udp_permitido_no_modo_atual():
+                logger.warning(
+                    "COZMO 01 — reset UDP bloqueado pelo OLED estável"
+                )
+                despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
+                self._garantir_rosto_base()
+                return False
         # COZMO 01 é uma tela do firmware. RX vivo e frame enviado pelo PC não
         # provam que a OLED o exibiu (confirmado pela webcam no HW5). Quando o
         # chamador marcou cozmo01, não masque o reset com esses falsos ACKs.
@@ -1362,6 +1374,15 @@ class Companion(CompanionVoz):
                     )
                     return
                 if detectar_cozmo01_suspeito(self.cli):
+                    from cozmo_companion.core.cozmo01_recovery import (
+                        reset_udp_permitido_no_modo_atual,
+                    )
+
+                    if not reset_udp_permitido_no_modo_atual():
+                        logger.warning(
+                            "COZMO 01 watchdog — reset UDP bloqueado pelo OLED estável"
+                        )
+                        return
                     logger.warning(
                         "COZMO 01 watchdog — tela travada %.0fs, reconectando UDP",
                         stall_cont,

@@ -191,7 +191,7 @@ class TestCompanionBase(unittest.TestCase):
         with patch(
             "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
             return_value=True,
-        ):
+        ), patch.dict(os.environ, {"COZMO_BASE_STABLE_OLED": "0"}):
             ok = Companion._reconectar_sessao_udp(
                 c, silencioso=False, forcado=True, cozmo01=True
             )
@@ -205,9 +205,37 @@ class TestCompanionBase(unittest.TestCase):
         with patch(
             "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
             return_value=True,
-        ), patch.dict(os.environ, {"COZMO01_POST_RESET_MIN_S": "60"}):
+        ), patch.dict(
+            os.environ,
+            {"COZMO01_POST_RESET_MIN_S": "60", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             ok = Companion._reconectar_sessao_udp(
                 c, silencioso=False, forcado=True, cozmo01=True
             )
         self.assertTrue(ok)
+        c._sessao_guard.tentar_reconectar.assert_not_called()
+
+    def test_reset_cozmo01_bloqueado_no_oled_estavel(self) -> None:
+        c = MagicMock(spec=Companion)
+        c.cli = MagicMock()
+        c._monitor_rx = MagicMock()
+        c._gov = MagicMock()
+        c._gov._medidor = MagicMock()
+        c._garantir_rosto_base = MagicMock()
+        c._sessao_guard = MagicMock()
+        with patch(
+            "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
+            return_value=True,
+        ), patch(
+            "cozmo_companion.core.companion.despertar_sessao_leve"
+        ) as despertar, patch.dict(
+            os.environ,
+            {"COZMO_BASE_STABLE_OLED": "1", "COZMO_BASE_STABLE_ALLOW_RESET": "0"},
+        ):
+            ok = Companion._reconectar_sessao_udp(
+                c, silencioso=False, forcado=True, cozmo01=True
+            )
+        self.assertFalse(ok)
+        despertar.assert_called_once_with(c.cli, c._monitor_rx, c._gov._medidor)
+        c._garantir_rosto_base.assert_called_once_with()
         c._sessao_guard.tentar_reconectar.assert_not_called()

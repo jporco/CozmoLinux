@@ -1218,17 +1218,20 @@ class Companion(CompanionVoz):
 
     def _reabrir_udp_apos_wifi(self) -> bool:
         """Wi-Fi voltou: o socket PyCozmo antigo costuma ficar sem RX."""
+        estava_na_base = self._base.preso_na_base
+        mesa_escolhida = self._base.mesa_escolhida
         ok = self._reconectar_sessao_udp(
             silencioso=False,
             forcado=True,
             cozmo01=True,
         )
         if ok:
-            self._base._preso_na_base = True
-            self._base._mesa_escolhida = False
-            from cozmo_companion.core.charger import definir_oled_preso_na_base
+            from cozmo_companion.core.charger import definir_oled_preso_na_base, em_base
 
-            definir_oled_preso_na_base(True)
+            fisicamente_na_base = em_base(self.cli)
+            self._base._preso_na_base = bool(fisicamente_na_base or estava_na_base)
+            self._base._mesa_escolhida = bool(mesa_escolhida and not self._base._preso_na_base)
+            definir_oled_preso_na_base(self._base._preso_na_base)
             self._recuperador.stall_consecutivo = 0
         return ok
 

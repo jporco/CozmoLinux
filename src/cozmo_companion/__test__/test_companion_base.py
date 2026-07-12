@@ -143,10 +143,14 @@ class TestCompanionBase(unittest.TestCase):
     def test_wifi_recuperado_reabre_udp_sem_sincronizar_cliente_velho(self) -> None:
         c = MagicMock(spec=Companion)
         c._reconectar_sessao_udp = MagicMock(return_value=True)
+        c.cli = MagicMock()
         c._base = MagicMock()
+        c._base.preso_na_base = True
+        c._base.mesa_escolhida = False
         c._recuperador = MagicMock()
-        with patch("cozmo_companion.core.charger.definir_oled_preso_na_base") as definir:
-            self.assertTrue(Companion._reabrir_udp_apos_wifi(c))
+        with patch("cozmo_companion.core.charger.em_base", return_value=True):
+            with patch("cozmo_companion.core.charger.definir_oled_preso_na_base") as definir:
+                self.assertTrue(Companion._reabrir_udp_apos_wifi(c))
         c._reconectar_sessao_udp.assert_called_once_with(
             silencioso=False,
             forcado=True,
@@ -155,6 +159,27 @@ class TestCompanionBase(unittest.TestCase):
         self.assertTrue(c._base._preso_na_base)
         self.assertFalse(c._base._mesa_escolhida)
         definir.assert_called_once_with(True)
+        self.assertEqual(c._recuperador.stall_consecutivo, 0)
+
+    def test_wifi_recuperado_preserva_modo_livre(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._reconectar_sessao_udp = MagicMock(return_value=True)
+        c.cli = MagicMock()
+        c._base = MagicMock()
+        c._base.preso_na_base = False
+        c._base.mesa_escolhida = True
+        c._recuperador = MagicMock()
+        with patch("cozmo_companion.core.charger.em_base", return_value=False):
+            with patch("cozmo_companion.core.charger.definir_oled_preso_na_base") as definir:
+                self.assertTrue(Companion._reabrir_udp_apos_wifi(c))
+        c._reconectar_sessao_udp.assert_called_once_with(
+            silencioso=False,
+            forcado=True,
+            cozmo01=True,
+        )
+        self.assertFalse(c._base._preso_na_base)
+        self.assertTrue(c._base._mesa_escolhida)
+        definir.assert_called_once_with(False)
         self.assertEqual(c._recuperador.stall_consecutivo, 0)
 
     def test_reset_cozmo01_nao_e_bloqueado_por_frame_enviado(self) -> None:

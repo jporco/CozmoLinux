@@ -4028,9 +4028,13 @@ def modo_proc_base(cli: "pycozmo.Client") -> None:
     """Olhos procedural 30fps — mesa/off-base; na base usar clip keeper/stream."""
     global _ultimo_modo_proc
     from cozmo_companion.core.charger import na_base_oled
+    from cozmo_companion.core.conexao import cozmo_alcanavel
 
     if na_base_oled(cli) or base_oled_carga_cheia_ativo(cli) or base_oled_usa_charger(cli):
         modo_charger_oled(cli, forcar=False)
+        return
+    if not rx_link_ok() or not cozmo_alcanavel():
+        logger.warning("OLED procedural adiado — sessão/Wi-Fi instável")
         return
     configurar_udp_leve_base(cli)
     _parar_charger_worker()
@@ -4057,7 +4061,7 @@ def modo_proc_base(cli: "pycozmo.Client") -> None:
     ac.enable_procedural_face(proc_on)
     if not getattr(modo_proc_base, "_log_ok", False):
         modo_proc_base._log_ok = True  # type: ignore[attr-defined]
-        logger.info("Base OLED: procedural oficial (AnimationController 30fps)")
+        logger.info("OLED livre: procedural oficial (AnimationController 30fps)")
 
 
 def garantir_display_vivo(cli: "pycozmo.Client", *, na_base: bool = True, forcar: bool = False) -> None:

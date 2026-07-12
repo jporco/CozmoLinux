@@ -47,6 +47,7 @@ class TestSomReacao(unittest.TestCase):
         c = FakeCompanion()
         with (
             patch("cozmo_companion.core.som_reacao.tocar_som_reacao") as tocar,
+            patch("cozmo_companion.display.rosto.solicitar_reacao_visual") as reacao,
             patch(
                 "cozmo_companion.core.motor_cozmo.tocar_clip_base_seguro",
                 return_value=True,
@@ -57,6 +58,7 @@ class TestSomReacao(unittest.TestCase):
             c._processar_stt()
         visual.assert_not_called()
         c._fila.enviar_anim.assert_called_once()
+        reacao.assert_called_once_with("sound", frames=5)
         tocar.assert_called_once()
         c._vida.registrar_interacao.assert_called_once()
 

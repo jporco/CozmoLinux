@@ -2266,20 +2266,24 @@ def _handshake_frame_oled(cli: "pycozmo.Client", *, force: bool = False) -> None
 def _pool_oled_com_frames(
     cli: "pycozmo.Client", candidatos: tuple[str, ...] | list[str]
 ) -> tuple[str, ...]:
-    """Só grupos com N frames OLED reais após patch sem rodas."""
+    """Só grupos com frames OLED reais e visíveis após patch sem rodas."""
     min_n = max(2, int(os.environ.get("COZMO_BASE_OLED_MIN_FRAMES", "8")))
-    ok: list[str] = []
+    min_bytes = max(1, int(os.environ.get("COZMO_BASE_OLED_MIN_BYTES", "56")))
+    ok: list[tuple[int, str]] = []
     for g in candidatos:
-        n = len(_frames_clip_oled(cli, g))
-        if n >= min_n:
-            ok.append(g)
+        frames = _frames_clip_oled(cli, g)
+        n = len(frames)
+        max_bytes = max((len(getattr(f, "image", b"") or b"") for f in frames), default=0)
+        if n >= min_n and max_bytes >= min_bytes:
+            ok.append((max_bytes, g))
     if ok:
-        return tuple(ok)
+        return tuple(g for _, g in sorted(ok, reverse=True))
     for fb in ("CodeLabBlink", "Hiccup", "CodeLabSquint1", "InterestedFace", "IdleOnCharger"):
         if fb in candidatos and len(_frames_clip_oled(cli, fb)) >= 2:
             logger.warning(
-                "pool OLED: nenhum clip com >=%d frames — fallback %s",
+                "pool OLED: nenhum clip com >=%d frames e >=%d B — fallback %s",
                 min_n,
+                min_bytes,
                 fb,
             )
             return (fb,)
@@ -3532,6 +3536,21 @@ def _iniciar_display_keeper(
         return
     if _base_oled_ppclip_em_backoff():
         return
+    # Mantido como fallback experimental. No HW5 testado por webcam, frames
+    # DisplayImage gerados pelo PC não limparam COZMO 01 de forma confiável, por
+    # isso o padrão continua em 0 e o caminho principal usa ppclips oficiais.
+    if os.environ.get("COZMO_BASE_KEEPER_PROCEDURAL", "0") == "1":
+        if grupo:
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            g = grupo.lower()
+            if any(p in g for p in ("happy", "laugh", "win", "react")):
+                solicitar_reacao_visual("happy", frames=5)
+            elif any(p in g for p in ("hiccup", "surprise", "sneeze", "shock")):
+                solicitar_reacao_visual("surprise", frames=5)
+            else:
+                solicitar_reacao_visual("curious", frames=4)
+        grupo = None
     with _display_lock:
         th = _display_thread
         mesmo_keeper = (

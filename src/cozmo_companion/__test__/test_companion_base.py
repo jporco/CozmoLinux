@@ -81,12 +81,18 @@ class TestCompanionBase(unittest.TestCase):
         with patch.dict(os.environ, {"CARINHO_TTS_NA_BASE": "0"}):
             with patch("cozmo_companion.core.charger.carga_prioritaria", return_value=False):
                 with patch("cozmo_companion.core.companion.audio_na_base", return_value=True):
-                    with patch(
-                        "cozmo_companion.core.motor_cozmo.manter_oled_base_ativo"
-                    ) as manter:
+                    with (
+                        patch(
+                            "cozmo_companion.core.motor_cozmo.manter_oled_base_ativo"
+                        ) as manter,
+                        patch(
+                            "cozmo_companion.display.rosto.solicitar_reacao_visual"
+                        ) as reacao,
+                    ):
                         Companion._ao_carinho_cabeca(c)
         c._fila.enviar_sinal_tts.assert_not_called()
         c._fila.enviar_anim.assert_called_once()
+        reacao.assert_called_once_with("pet", frames=6)
         manter.assert_not_called()
 
     def test_stt_idle_rms_na_base(self) -> None:
@@ -150,3 +156,33 @@ class TestCompanionBase(unittest.TestCase):
         self.assertFalse(c._base._mesa_escolhida)
         definir.assert_called_once_with(True)
         self.assertEqual(c._recuperador.stall_consecutivo, 0)
+
+    def test_reset_cozmo01_nao_e_bloqueado_por_frame_enviado(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._ultimo_reconnect_udp = 0.0
+        c._sessao_guard = MagicMock()
+        c._sessao_guard.tentar_reconectar.return_value = False
+        c._na_base_efetivo = MagicMock(return_value=True)
+        with patch(
+            "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
+            return_value=True,
+        ):
+            ok = Companion._reconectar_sessao_udp(
+                c, silencioso=False, forcado=True, cozmo01=True
+            )
+        self.assertFalse(ok)
+        c._sessao_guard.tentar_reconectar.assert_called_once_with()
+
+    def test_reset_cozmo01_duplicado_respeita_estabilizacao(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._ultimo_reconnect_udp = time.monotonic() - 10.0
+        c._sessao_guard = MagicMock()
+        with patch(
+            "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
+            return_value=True,
+        ), patch.dict(os.environ, {"COZMO01_POST_RESET_MIN_S": "60"}):
+            ok = Companion._reconectar_sessao_udp(
+                c, silencioso=False, forcado=True, cozmo01=True
+            )
+        self.assertTrue(ok)
+        c._sessao_guard.tentar_reconectar.assert_not_called()

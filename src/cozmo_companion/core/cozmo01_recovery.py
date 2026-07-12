@@ -142,8 +142,13 @@ class RecuperadorCozmo01:
 
         rx_morto = rx_morto_s()
         keeper_dead_max = float(os.environ.get("COZMO01_KEEPER_RX_DEAD_MAX_S", "8"))
+        # Um keeper/frame recente só é sinal útil se o TX ainda está baixo.
+        # No HW5 observado, tela "viva" com drx=0 e dtx alto é falso ACK:
+        # o firmware continua aceitando envio por um tempo, mas o RX já travou.
+        keeper_pode_segurar = dtx < stall_tx_base()
         if (
             not g.rx_ok
+            and keeper_pode_segurar
             and (oled_charger_vivo(cli) or oled_frame_recente())
             and rx_morto < keeper_dead_max
         ):

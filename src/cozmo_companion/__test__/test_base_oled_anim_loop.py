@@ -170,6 +170,23 @@ class TestBaseOledAnimLoop(unittest.TestCase):
             self.assertEqual(motor._passo_frames_keeper(6.0), 5)
             self.assertEqual(motor._passo_frames_keeper(30.0), 1)
 
+    def test_pool_oled_filtra_frames_fracos(self) -> None:
+        cli = MagicMock()
+
+        def frames(_cli, grupo):
+            pkt = MagicMock()
+            pkt.image = b"x" * (72 if grupo == "forte" else 44)
+            return (pkt,) * 8
+
+        with (
+            patch.object(motor, "_frames_clip_oled", side_effect=frames),
+            patch.dict("os.environ", {"COZMO_BASE_OLED_MIN_BYTES": "56"}),
+        ):
+            self.assertEqual(
+                motor._pool_oled_com_frames(cli, ("fraco", "forte")),
+                ("forte",),
+            )
+
     def test_display_keeper_ignorado_com_anim_loop(self) -> None:
         cli = MagicMock()
         with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):

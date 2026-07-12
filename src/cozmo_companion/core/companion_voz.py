@@ -467,6 +467,9 @@ class CompanionVoz:
             self._na_base_efetivo()
             and os.environ.get("WAKE_BASE_VISUAL_ONLY", "1") == "1"
         ):
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("wake", frames=5)
             # Dizer apenas "Cozmo" não deve somar TTS ao stream OLED. Essa
             # sobreposição enche o UDP do firmware e termina em COZMO 01.
             self._fila.enviar_anim(REACOES_WAKE, prioridade=False)
@@ -653,6 +656,10 @@ class CompanionVoz:
         # a grito.
         limiar_intenso = float(os.environ.get("BARULHO_INTENSO_RMS", "2600"))
         tipo_som = "susto" if nivel >= limiar_intenso else "curioso"
+        if self._na_base_efetivo():
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("sound", frames=5)
         self._tocar_som_reacao(tipo_som)
         logger.info("Barulho na base" if self._na_base_efetivo() else "Barulho livre")
 

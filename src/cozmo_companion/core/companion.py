@@ -586,6 +586,9 @@ class Companion(CompanionVoz):
         self._vida.registrar_interacao(25.0)
         na_base = self._na_base_efetivo()
         if na_base:
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("pet", frames=6)
             pool = self._anim_director.pool(
                 set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.PET
             )
@@ -1096,29 +1099,23 @@ class Companion(CompanionVoz):
         cozmo01: bool = False,
     ) -> bool:
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
-        if reset_cozmo01 and self._na_base_efetivo():
-            from cozmo_companion.core.motor_cozmo import (
-                oled_frame_recente,
-                renovar_sessao_base_oled,
-                rx_link_ok,
-            )
-
-            if oled_frame_recente() and rx_link_ok():
-                logger.info("Reset UDP evitado — frame OLED recente")
-                return True
-            if renovar_sessao_base_oled(
-                self.cli, self._gov._medidor, forcar=True
-            ):
-                self._monitor_rx.sincronizar(self.cli)
-                self._gov._medidor.reset()
-                if rx_link_ok():
-                    logger.info("Reset UDP evitado — sessão OLED renovada")
-                    return True
+        # COZMO 01 é uma tela do firmware. RX vivo e frame enviado pelo PC não
+        # provam que a OLED o exibiu (confirmado pela webcam no HW5). Quando o
+        # chamador marcou cozmo01, não masque o reset com esses falsos ACKs.
         if nunca_desconectar_udp() and not reset_cozmo01:
             despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
             self._garantir_rosto_base()
             return False
         agora = time.monotonic()
+        if reset_cozmo01 and self._ultimo_reconnect_udp > 0:
+            pos_reset = float(os.environ.get("COZMO01_POST_RESET_MIN_S", "60"))
+            idade_reset = agora - self._ultimo_reconnect_udp
+            if idade_reset < pos_reset:
+                logger.info(
+                    "COZMO 01 — reset duplicado ignorado (sessão nova há %.0fs)",
+                    idade_reset,
+                )
+                return True
         cooldown = float(os.environ.get("COZMO_RATIO_PREVENT_COOLDOWN_S", "25"))
         if not forcado and agora - self._ultimo_reconnect_udp < cooldown:
             return False
@@ -1128,10 +1125,23 @@ class Companion(CompanionVoz):
             logger.warning("COZMO 01 — reconexão UDP")
         elif forcado and cozmo_alcanavel():
             logger.info("COZMO 01 — reset UDP (ping OK, rx parado)")
+        if reset_cozmo01:
+            try:
+                from cozmo_companion.core.motor_cozmo import (
+                    _parar_awake_oled_base,
+                    parar_flood_anim,
+                )
+
+                _parar_awake_oled_base(self.cli, timeout=1.0)
+                parar_flood_anim(self.cli)
+            except Exception as exc:
+                logger.debug("Falha ao parar OLED antes do reset: %s", exc)
         self._abortar_trafego_udp()
         quiet_pre = float(os.environ.get("COZMO_POST_RECONNECT_S", "22"))
         self._fila.pausar(quiet_pre)
-        if not aguardar_ping(float(os.environ.get("COZMO_RECONNECT_WAIT_PING_S", "25"))):
+        if not reset_cozmo01 and not aguardar_ping(
+            float(os.environ.get("COZMO_RECONNECT_WAIT_PING_S", "25"))
+        ):
             self._sessao_guard.liberar(sucesso=False)
             return False
         self._ultimo_reconnect_udp = agora
@@ -1222,21 +1232,36 @@ class Companion(CompanionVoz):
             self._recuperador.stall_consecutivo = 0
         return ok
 
-    def _sessao_fresca_no_boot(self) -> None:
+    def _sessao_fresca_no_boot(self) -> bool:
         """Boot: stream OLED na base — só reset UDP se sessão herdada stale (rx alto)."""
-        if not cozmo_alcanavel():
-            return
+        wait_s = (
+            float(os.environ.get("COZMO_BOOT_FRESH_WAIT_S", "6"))
+            if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1"
+            else 0.0
+        )
+        deadline = time.monotonic() + wait_s
+        while not cozmo_alcanavel():
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.35)
         from cozmo_companion.core.motor_cozmo import ligar_oled_base
 
         self._monitor_rx.sincronizar(self.cli)
         self._gov._medidor.reset()
         d = diagnostico(self.cli)
 
+        if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1":
+            logger.warning("Boot — reset UDP explícito para limpar COZMO 01")
+            self._reconectar_sessao_udp(
+                silencioso=False, forcado=True, cozmo01=True
+            )
+            return True
+
         if sessao_parece_fresca(self.cli):
             logger.info("Boot — sessão OK (rx=%d), sem reset", d["recv_frames"])
             if self._na_base_efetivo():
                 ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
-            return
+            return False
 
         if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") != "1":
             logger.info(
@@ -1245,7 +1270,7 @@ class Companion(CompanionVoz):
             )
             if self._na_base_efetivo():
                 ligar_oled_base(self.cli, forcar=True, preso_na_base=True)
-            return
+            return False
 
         logger.info("Boot — sessão stale rx=%d, reset UDP", d["recv_frames"])
         if not nunca_desconectar_udp():
@@ -1378,7 +1403,7 @@ class Companion(CompanionVoz):
 
             avisar_modo_wifi_setup(self.cli)
 
-        if g.abortar_flood and not busy and not quieto:
+        if g.abortar_flood and g.rx_ok and not busy and not quieto:
             from cozmo_companion.core.conexao import _ppclip_sessao_viva
             from cozmo_companion.core.motor_cozmo import ppclip_base_ativo
 
@@ -1802,6 +1827,10 @@ class Companion(CompanionVoz):
             religar_oled_acordado_base,
         )
 
+        boot_reset_feito = False
+        if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1":
+            boot_reset_feito = self._sessao_fresca_no_boot()
+
         boot_acordado = (
             os.environ.get("COZMO_BOOT_ACORDADO", "1") == "1"
             and self._na_base_efetivo()
@@ -1861,7 +1890,8 @@ class Companion(CompanionVoz):
         self._eventos()
         self._iniciar_thread_face()
         self._aplicar_modo(ModoPerf.NORMAL)
-        self._sessao_fresca_no_boot()
+        if not boot_reset_feito:
+            self._sessao_fresca_no_boot()
         boot_quiet = float(os.environ.get("COZMO_BOOT_QUIET_S", "4"))
         self._marcar_udp_quieto(boot_quiet)
         self._ultimo_reconnect_udp = time.monotonic()

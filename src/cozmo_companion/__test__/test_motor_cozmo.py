@@ -95,6 +95,7 @@ class TestMotorCozmo(unittest.TestCase):
                 "COZMO_BASE_KEEPER_VIVO": "0",
                 "COZMO_CHARGER_PLAY_STREAM": "1",
                 "COZMO_CHARGER_STREAM_NA_CHEIA": "1",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_CHARGER_AWAKE_IDLE": "IdleOnCharger",
             },
         ):
@@ -275,6 +276,7 @@ class TestMotorCozmo(unittest.TestCase):
                 "COZMO_BASE_OLED_CHARGER_FULL": "1",
                 "COZMO_CHARGER_PLAY_STREAM": "1",
                 "COZMO_CHARGER_OLED_KEEPER": "0",
+                "COZMO_BASE_STABLE_OLED": "0",
             },
         ):
             with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
@@ -299,6 +301,53 @@ class TestMotorCozmo(unittest.TestCase):
         ):
             with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
                 self.assertFalse(base_oled_usa_proc_vivo(cli))
+
+    def test_base_stable_bloqueia_stream_e_proc_30fps(self) -> None:
+        from cozmo_companion.core.motor_cozmo import (
+            _base_oled_anim_loop_ativo,
+            _charger_play_stream,
+            base_oled_usa_proc_vivo,
+        )
+
+        cli = MagicMock()
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_STABLE_OLED": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_BASE_OLED_ANIM_LOOP": "1",
+                "COZMO_BASE_OLED_MODE": "proc",
+            },
+        ):
+            with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
+                self.assertFalse(_charger_play_stream(cli))
+                self.assertFalse(_base_oled_anim_loop_ativo())
+                self.assertFalse(base_oled_usa_proc_vivo(cli))
+
+    def test_modo_livre_estavel_nao_liga_face_procedural(self) -> None:
+        from cozmo_companion.core.motor_cozmo import modo_mesa_vivo
+
+        cli = MagicMock()
+        ac = cli.anim_controller
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_STABLE_OLED": "1", "COZMO_LIVRE_PROC_FACE": "0"},
+        ):
+            with patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=True):
+                with patch("cozmo_companion.core.conexao.cozmo_alcanavel", return_value=True):
+                    modo_mesa_vivo(cli)
+        ac.enable_procedural_face.assert_called_once_with(False)
+        ac.enable_animations.assert_called_once_with(True)
+
+    def test_modo_livre_instavel_nao_liga_anim_controller(self) -> None:
+        from cozmo_companion.core.motor_cozmo import modo_mesa_vivo
+
+        cli = MagicMock()
+        ac = cli.anim_controller
+        with patch("cozmo_companion.core.motor_cozmo.rx_link_ok", return_value=False):
+            modo_mesa_vivo(cli)
+        ac.enable_procedural_face.assert_not_called()
+        ac.enable_animations.assert_not_called()
 
     def test_base_oled_usa_pulse_off_carga_cheia_stream(self) -> None:
         from cozmo_companion.core.motor_cozmo import (
@@ -434,6 +483,7 @@ class TestMotorCozmo(unittest.TestCase):
                 "COZMO_CHARGER_PLAY_STREAM": "1",
                 "COZMO_CHARGER_OLED_KEEPER": "0",
                 "COZMO_CHARGER_SLOW_ANIM": "0",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_BASE_KEEPER_VIVO": "0",
             },
         ):
@@ -536,6 +586,7 @@ class TestMotorCozmo(unittest.TestCase):
                 "COZMO_CHARGER_PLAY_STREAM": "0",
                 "COZMO_CHARGER_OLED_KEEPER": "1",
                 "COZMO_CHARGER_SLOW_ANIM": "0",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_BASE_KEEPER_VIVO": "0",
             },
         ):
@@ -611,6 +662,7 @@ class TestMotorCozmo(unittest.TestCase):
             "os.environ",
             {
                 "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_CHARGER_PLAY_STREAM": "0",
                 "COZMO_BASE_OLED_MODE": "proc",
             },
@@ -618,7 +670,11 @@ class TestMotorCozmo(unittest.TestCase):
             self.assertTrue(motor._base_oled_anim_loop_ativo())
         with patch.dict(
             "os.environ",
-            {"COZMO_BASE_OLED_ANIM_LOOP": "auto", "COZMO_CHARGER_PLAY_STREAM": "1"},
+            {
+                "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_BASE_STABLE_OLED": "0",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+            },
         ):
             self.assertFalse(motor._base_oled_anim_loop_ativo())
 
@@ -639,6 +695,7 @@ class TestMotorCozmo(unittest.TestCase):
             {
                 "COZMO_CHARGER_PLAY_STREAM": "0",
                 "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_BASE_KEEPER_VIVO": "0",
             },
         ):

@@ -1253,12 +1253,19 @@ class Companion(CompanionVoz):
         self._gov._medidor.reset()
         d = diagnostico(self.cli)
 
-        if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1":
+        from cozmo_companion.core.motor_cozmo import base_oled_stable_only
+
+        if (
+            os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1"
+            and not base_oled_stable_only()
+        ):
             logger.warning("Boot — reset UDP explícito para limpar COZMO 01")
             self._reconectar_sessao_udp(
                 silencioso=False, forcado=True, cozmo01=True
             )
             return True
+        if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1":
+            logger.info("Boot — reset UDP desligado no modo OLED estável")
 
         if sessao_parece_fresca(self.cli):
             logger.info("Boot — sessão OK (rx=%d), sem reset", d["recv_frames"])
@@ -1772,14 +1779,16 @@ class Companion(CompanionVoz):
         from cozmo_companion.core.motor_cozmo import (
             base_oled_modo,
             base_oled_modo_direto,
+            base_oled_stable_only,
             modo_base_olhos,
             parar_flood_anim,
             pulso_sync_base,
         )
 
+        oled_base_desc = "keeper-estavel" if base_oled_stable_only() else base_oled_modo()
         logger.info(
             "Companheiro v2 — PC cérebro / Cozmo músculo (OLED base=%s)",
-            base_oled_modo(),
+            oled_base_desc,
         )
 
         from cozmo_companion.core.motor_cozmo import (
@@ -1849,7 +1858,7 @@ class Companion(CompanionVoz):
                 animar=False,
             )
             religar_oled_acordado_base(self.cli, forcar=True)
-            logger.info("Boot — OLED acordado (ppclip idle)")
+            logger.info("Boot — OLED acordado (keeper estável)")
         else:
             if not base_oled_usa_charger(self.cli):
                 parar_flood_anim(self.cli)

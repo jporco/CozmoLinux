@@ -1448,6 +1448,8 @@ def _duracao_clip_base_s() -> float:
 
 
 def _base_oled_anim_loop_ativo() -> bool:
+    if base_oled_stable_only():
+        return False
     if _base_oled_animado_desativado():
         return False
     if _base_oled_ppclip_em_backoff():
@@ -2139,6 +2141,8 @@ def manter_proc_vivo_base(cli: "pycozmo.Client") -> bool:
 
 def _charger_play_stream(cli: "pycozmo.Client") -> bool:
     """30fps play_anim na base — desligado em 100%% (ratio>1 → tela preta / COZMO 01)."""
+    if base_oled_stable_only():
+        return False
     if os.environ.get("COZMO_CHARGER_PLAY_STREAM", "1") != "1":
         return False
     if base_oled_carga_cheia_ativo(cli) and os.environ.get(
@@ -2150,6 +2154,8 @@ def _charger_play_stream(cli: "pycozmo.Client") -> bool:
 
 def base_oled_usa_proc_vivo(cli: "pycozmo.Client") -> bool:
     """Base: rosto procedural 30fps — só enquanto carrega; 100%% usa clip IdleOnCharger."""
+    if base_oled_stable_only():
+        return False
     if not base_oled_modo_proc():
         return False
     # Keeper/clip na base (stream=0) — procedural aqui gerava recursão ligar↔charger↔proc.
@@ -3774,6 +3780,21 @@ def base_oled_modo() -> str:
     return os.environ.get("COZMO_BASE_OLED_MODE", "proc").strip().lower()
 
 
+def base_oled_stable_only() -> bool:
+    """Modo padrão: base usa só keeper de frames oficiais em baixa taxa.
+
+    O projeto antigo misturava ppclip contínuo, DisplayImage procedural e
+    AnimationController 30fps. No HW5 real isso derruba RX e joga a tela para
+    COZMO 01. Este gate deixa a base com uma única estratégia previsível.
+    """
+    return os.environ.get("COZMO_BASE_STABLE_OLED", "1").strip().lower() not in (
+        "0",
+        "off",
+        "false",
+        "no",
+    )
+
+
 def base_oled_modo_direto() -> bool:
     return base_oled_modo() == "direct"
 
@@ -4032,6 +4053,9 @@ def modo_proc_base(cli: "pycozmo.Client") -> None:
 
     if na_base_oled(cli) or base_oled_carga_cheia_ativo(cli) or base_oled_usa_charger(cli):
         modo_charger_oled(cli, forcar=False)
+        return
+    if base_oled_stable_only() and os.environ.get("COZMO_LIVRE_PROC_FACE", "0") != "1":
+        modo_mesa_vivo(cli)
         return
     if not rx_link_ok() or not cozmo_alcanavel():
         logger.warning("OLED procedural adiado — sessão/Wi-Fi instável")
@@ -4426,13 +4450,21 @@ def modo_base_olhos(cli: "pycozmo.Client") -> None:
 
 def modo_mesa_vivo(cli: "pycozmo.Client") -> None:
     from cozmo_companion.core.charger import base_sempre_na_carga
+    from cozmo_companion.core.conexao import cozmo_alcanavel
 
     if base_sempre_na_carga():
         ligar_oled_base(cli, forcar=True, preso_na_base=True)
         return
+    if not rx_link_ok() or not cozmo_alcanavel():
+        logger.warning("Modo livre visual adiado — sessão/Wi-Fi instável")
+        return
     _garantir_thread_anim(cli)
     ac = cli.anim_controller
-    ac.enable_procedural_face(os.environ.get("COZMO_PROC_FACE", "1") == "1")
+    proc_livre = (
+        os.environ.get("COZMO_PROC_FACE", "1") == "1"
+        and os.environ.get("COZMO_LIVRE_PROC_FACE", "0") == "1"
+    )
+    ac.enable_procedural_face(proc_livre)
     ac.enable_animations(True)
 
 

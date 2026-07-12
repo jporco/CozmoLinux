@@ -23,7 +23,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
         motor._charger_keeper_ativo = False
 
     def test_anim_loop_ativo_por_env(self) -> None:
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             self.assertTrue(motor._base_oled_anim_loop_ativo())
         with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "0"}):
             self.assertFalse(motor._base_oled_anim_loop_ativo())
@@ -38,7 +41,11 @@ class TestBaseOledAnimLoop(unittest.TestCase):
         cli = MagicMock()
         with patch.dict(
             "os.environ",
-            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_OLED_KEEPALIVE": "1"},
+            {
+                "COZMO_BASE_OLED_ANIM_LOOP": "1",
+                "COZMO_BASE_STABLE_OLED": "0",
+                "COZMO_BASE_OLED_KEEPALIVE": "1",
+            },
         ):
             with patch.object(motor, "iniciar_loop_clip_base") as iniciar:
                 motor.iniciar_oled_keepalive_base(cli)
@@ -47,7 +54,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
 
     def test_exibir_clip_delega_loop_externo(self) -> None:
         cli = MagicMock()
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch(
                 "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
                 return_value=True,
@@ -69,7 +79,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
 
     def test_exibir_clip_forcar_toca_direto(self) -> None:
         cli = MagicMock()
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch(
                 "cozmo_companion.core.motor_cozmo.base_oled_usa_charger",
                 return_value=True,
@@ -189,7 +202,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
 
     def test_display_keeper_ignorado_com_anim_loop(self) -> None:
         cli = MagicMock()
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch.object(motor, "_garantir_base_oled_anim_loop", return_value=True) as garantir:
                 motor._iniciar_display_keeper(cli, 7.0, grupo="CodeLabBlink")
         garantir.assert_called_once_with(cli)
@@ -197,7 +213,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
     def test_iniciar_loop_clip_bloqueado_no_sono(self) -> None:
         cli = MagicMock()
         motor.definir_modo_sono_oled(True)
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch.object(motor, "_clip_loop_vivo", return_value=False):
                 with patch.object(motor, "_parar_display_keeper"):
                     with patch.object(motor, "_parar_oled_keepalive_base"):
@@ -205,7 +224,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
                             self.assertTrue(motor.iniciar_loop_clip_base(cli))
         motor.definir_modo_sono_oled(False)
         motor._sono_oled_texto_ativo = True
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             self.assertFalse(motor.iniciar_loop_clip_base(cli))
         motor._sono_oled_texto_ativo = False
 
@@ -233,7 +255,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
     def test_segurar_loop_impede_iniciar(self) -> None:
         cli = MagicMock()
         motor.segurar_base_oled_loop(30.0)
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             self.assertFalse(motor.iniciar_loop_clip_base(cli))
         motor._base_oled_loop_hold_ate = 0.0
         motor._base_oled_loop_hold_desde = 0.0
@@ -272,7 +297,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
         agora = time.monotonic()
         motor._base_oled_loop_hold_desde = agora - 20.0
         motor._base_oled_loop_hold_ate = agora - 1.0
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch.object(motor, "rx_link_ok", return_value=True):
                 with patch.object(motor, "_base_oled_anim_loop_ativo", return_value=True):
                     with patch.object(
@@ -352,6 +380,7 @@ class TestBaseOledAnimLoop(unittest.TestCase):
             "os.environ",
             {
                 "COZMO_BASE_OLED_ANIM_LOOP": "1",
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_BASE_OLED_LOOP_BACKOFF_S": "30",
             },
         ):
@@ -364,7 +393,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
     def test_cortar_flood_pausa_ppclip_mesmo_com_rx(self) -> None:
         cli = MagicMock()
         motor._clip_loop_thread = MagicMock(is_alive=lambda: True)
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch.object(motor, "rx_link_ok", return_value=True):
                 with patch.object(motor, "_oled_sessao_viva", return_value=True):
                     with patch.object(motor, "_pausar_base_oled_anim_loop_por_stall") as pausar:
@@ -424,7 +456,10 @@ class TestBaseOledAnimLoop(unittest.TestCase):
             "IdleOnCharger",
             "CodeLabBlink",
         ]
-        with patch.dict("os.environ", {"COZMO_BASE_OLED_ANIM_LOOP": "1"}):
+        with patch.dict(
+            "os.environ",
+            {"COZMO_BASE_OLED_ANIM_LOOP": "1", "COZMO_BASE_STABLE_OLED": "0"},
+        ):
             with patch(
                 "cozmo_companion.core.motor_cozmo._pool_oled_com_frames",
                 return_value=("CodeLabBlink",),

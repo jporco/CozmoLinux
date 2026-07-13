@@ -518,6 +518,20 @@ class FilaCozmo:
     def _iniciar_item(self, cli: pycozmo.Client, item: ItemFila) -> None:
         self._estado_desde = time.monotonic()
         if item.tipo == TipoItem.ANIM:
+            if self.na_base():
+                from cozmo_companion.core.motor_cozmo import (
+                    base_oled_stable_only,
+                    variar_clip_base_oled,
+                )
+
+                if base_oled_stable_only():
+                    variar_clip_base_oled(cli, forcado=True)
+                    self._estado = EstadoFila.IDLE
+                    self._anim_aguardando = False
+                    self._anim_deadline = 0.0
+                    self._procedural_desligado = False
+                    logger.info("Fila — anim convertida em reação OLED estável")
+                    return
             self._desligar_procedural(cli)
             ok = self.tocar_grupo(item.grupos, prioridade=item.prioridade)
             if ok is False:
@@ -551,6 +565,18 @@ class FilaCozmo:
             )
             return
         if item.tipo == TipoItem.OLED:
+            if self.na_base() and os.environ.get("COZMO_BASE_STABLE_TEXT", "0") != "1":
+                from cozmo_companion.core.motor_cozmo import (
+                    base_oled_stable_only,
+                    variar_clip_base_oled,
+                )
+
+                if base_oled_stable_only():
+                    variar_clip_base_oled(cli, forcado=True)
+                    self._oled_fim = 0.0
+                    self._estado = EstadoFila.IDLE
+                    logger.info("Fila — OLED texto convertido em reação OLED estável")
+                    return
             if self.na_base() and item.oled_forcado:
                 from cozmo_companion.core.motor_cozmo import (
                     pausar_base_oled_para_texto,

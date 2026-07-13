@@ -19,6 +19,7 @@ class TestFilaCozmo(unittest.TestCase):
         os.environ["COZMO_MAX_TTS_SINAL_WORDS"] = "1"
         os.environ["COZMO_MAX_OLED_CHARS"] = "16"
         os.environ["COZMO_FILA_TIMEOUT_S"] = "0.15"
+        os.environ["COZMO_BASE_STABLE_OLED"] = "0"
         self.gov = GovernadorCozmo()
         self.gov._tokens = 50.0
         self.tocadas: list[tuple[str, ...]] = []
@@ -114,6 +115,32 @@ class TestFilaCozmo(unittest.TestCase):
         time.sleep(0.2)
         self.fila.tick(cli)
         self.assertEqual(self.sinais, ["Ei"])
+
+    def test_base_estavel_converte_anim_em_reacao_oled(self) -> None:
+        os.environ["COZMO_BASE_STABLE_OLED"] = "1"
+        self.fila.enviar_anim(("CodeLabReactHappy",), prioridade=True)
+        cli = MagicMock()
+        with patch(
+            "cozmo_companion.core.motor_cozmo.variar_clip_base_oled",
+            return_value=True,
+        ) as variar:
+            self.fila.tick(cli)
+        variar.assert_called_once_with(cli, forcado=True)
+        self.assertEqual(self.tocadas, [])
+        self.assertEqual(self.fila.estado, EstadoFila.IDLE)
+
+    def test_base_estavel_converte_oled_texto_em_reacao_oled(self) -> None:
+        os.environ["COZMO_BASE_STABLE_OLED"] = "1"
+        self.fila.enviar_oled("Telegram", segundos=0.2, prioridade=True, forcado=True)
+        cli = MagicMock()
+        with patch(
+            "cozmo_companion.core.motor_cozmo.variar_clip_base_oled",
+            return_value=True,
+        ) as variar:
+            self.fila.tick(cli)
+        variar.assert_called_once_with(cli, forcado=True)
+        self.assertEqual(self.oleds, [])
+        self.assertEqual(self.fila.estado, EstadoFila.IDLE)
 
     def test_notif_oled_na_base(self) -> None:
         self.fila.na_base = lambda: True

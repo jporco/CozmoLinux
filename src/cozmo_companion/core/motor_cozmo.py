@@ -132,12 +132,11 @@ def ajustar_oled_fase_link(cli: "pycozmo.Client", fase: str) -> bool:
     with _charger_oled_lock:
         grupo = _charger_oled_nome or "IdleOnCharger"
     if fase == "verde":
-        # O HW5 continua enviando telemetria mesmo quando a tela já caiu em
-        # COZMO 01. No robô real, 3 Hz ainda acumulou dtx>580 e matou o RX;
-        # 1,5 Hz ficou estável por vários minutos. O passo de quadros preserva
-        # a duração/variedade das expressões apesar da taxa baixa.
-        teto_hw5 = float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "1.5"))
-        hz = max(1.0, min(max(1.0, teto_hw5), verde_keeper_hz))
+        # O HW5 continua aceitando TX por alguns segundos mesmo quando o RX já
+        # morreu e a firmware volta para COZMO 01. 1,5 Hz ainda gerou reset no
+        # robô real; permitir sub-1 Hz é mais importante que fluidez falsa.
+        teto_hw5 = float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "0.5"))
+        hz = max(0.2, min(max(0.2, teto_hw5), verde_keeper_hz))
     else:
         hz = oled_hz_para_fase(fase, _keeper_clip_hz(cli))
     _parar_display_keeper()
@@ -3651,8 +3650,7 @@ def _iniciar_display_keeper(
     ac = cli.anim_controller
     ac.enable_procedural_face(False)
     ac.enable_animations(False)
-    if ac.thread and ac.thread.is_alive():
-        _parar_thread_anim(cli)
+    _garantir_thread_anim(cli)
     _display_stop.clear()
     _display_generation += 1
     geracao = _display_generation
@@ -4651,17 +4649,50 @@ def base_suprime_oled_texto(cli: "pycozmo.Client") -> bool:
 
 
 def _oled_tx_direto(cli: "pycozmo.Client") -> bool:
-    """HW5 100%%: fila do AnimationController sem animations_enabled = tela preta."""
-    if base_oled_modo_direto() or os.environ.get("COZMO_OLED_DIRECT", "0") == "1":
-        return True
-    if keeper_base_ativo() or _charger_keeper_ativo:
-        return True
-    if base_oled_usa_charger(cli) and (
-        base_oled_carga_cheia_ativo(cli)
-        or os.environ.get("COZMO_BASE_KEEPER_VIVO", "0") == "1"
-    ):
+    """Fallback manual para envio cru.
+
+    No HW5, mandar DisplayImage direto em ``conn.send`` deixa o log com TX/RX
+    verde, mas pode não limpar/desenhar a OLED quando a firmware está na tela
+    COZMO 01. O caminho padrão precisa passar pelo AnimationController, só que
+    sem manter o loop 30 FPS ligado continuamente.
+    """
+    if os.environ.get("COZMO_OLED_DIRECT", "0") == "1":
         return True
     return False
+
+
+def _pulso_oled_anim_controller(
+    cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage
+) -> None:
+    """Envia um frame OLED pela sessão nativa sem deixar flood 30 FPS vivo."""
+    ac = cli.anim_controller
+    try:
+        _garantir_thread_anim(cli)
+    except Exception:
+        pass
+    try:
+        ac.enable_procedural_face(False)
+    except Exception:
+        pass
+    try:
+        # Evita backlog quando o keeper troca de reação ou quando a CPU atrasa.
+        ac.queue.clear()
+    except Exception:
+        pass
+    try:
+        ac.enable_animations(True)
+        ac.display_image(pkt)
+        pausa = float(os.environ.get("COZMO_OLED_FRAME_PULSE_S", "0.06"))
+        time.sleep(max(0.02, min(0.15, pausa)))
+    finally:
+        try:
+            ac.enable_animations(False)
+        except Exception:
+            pass
+        try:
+            ac.last_image_pkt = pkt
+        except Exception:
+            pass
 
 
 def enviar_oled(cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage) -> None:
@@ -4673,7 +4704,7 @@ def enviar_oled(cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage) -> No
         if _imagem_vazia(ac.last_image_pkt):
             ac.last_image_pkt = pkt
     else:
-        cli.anim_controller.display_image(pkt)
+        _pulso_oled_anim_controller(cli, pkt)
 
 
 def ping_oob(cli: "pycozmo.Client", vezes: int = 1) -> None:

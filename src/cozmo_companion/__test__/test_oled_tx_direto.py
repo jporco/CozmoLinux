@@ -1,4 +1,4 @@
-"""OLED na base: TX direto (≠ fila AnimationController)."""
+"""OLED: envio direto só como fallback explícito."""
 from __future__ import annotations
 
 import os
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 class TestOledTxDireto(unittest.TestCase):
-    def test_keeper_usa_conn_send(self) -> None:
+    def test_keeper_usa_pulso_anim_controller_por_padrao(self) -> None:
         from cozmo_companion.core import motor_cozmo as mc
 
         cli = MagicMock()
@@ -15,7 +15,18 @@ class TestOledTxDireto(unittest.TestCase):
         with patch.dict(os.environ, {"COZMO_OLED_DIRECT": "0"}, clear=False):
             with patch.object(mc, "keeper_base_ativo", return_value=True):
                 with patch.object(mc, "_charger_keeper_ativo", False):
-                    mc.enviar_oled(cli, pkt)
+                    with patch.object(mc, "_pulso_oled_anim_controller") as pulso:
+                        mc.enviar_oled(cli, pkt)
+        pulso.assert_called_once_with(cli, pkt)
+        cli.conn.send.assert_not_called()
+
+    def test_envio_direto_so_com_flag_explicita(self) -> None:
+        from cozmo_companion.core import motor_cozmo as mc
+
+        cli = MagicMock()
+        pkt = MagicMock()
+        with patch.dict(os.environ, {"COZMO_OLED_DIRECT": "1"}, clear=False):
+            mc.enviar_oled(cli, pkt)
         cli.conn.send.assert_called_with(pkt)
         cli.anim_controller.display_image.assert_not_called()
 

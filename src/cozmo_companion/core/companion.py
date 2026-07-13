@@ -1103,6 +1103,29 @@ class Companion(CompanionVoz):
             from cozmo_companion.core.cozmo01_recovery import (
                 reset_udp_permitido_no_modo_atual,
             )
+            from cozmo_companion.core.motor_cozmo import (
+                base_oled_stable_only,
+                resgatar_oled_estavel_sem_reset,
+                rx_link_ok,
+                rx_morto_s,
+            )
+
+            if base_oled_stable_only() and (rx_link_ok() or rx_morto_s() <= float(
+                os.environ.get("COZMO01_RESET_RX_DEAD_MIN_S", "30")
+            )):
+                logger.warning(
+                    "COZMO 01 — reset UDP bloqueado (RX ainda recuperável)"
+                )
+                despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
+                try:
+                    resgatar_oled_estavel_sem_reset(
+                        self.cli,
+                        motivo="reset_bloqueado",
+                    )
+                except Exception as exc:
+                    logger.debug("resgate OLED estável: %s", exc)
+                self._garantir_rosto_base()
+                return False
 
             if not reset_udp_permitido_no_modo_atual():
                 logger.warning(

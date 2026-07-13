@@ -1276,11 +1276,13 @@ class Companion(CompanionVoz):
         self._gov._medidor.reset()
         d = diagnostico(self.cli)
 
-        from cozmo_companion.core.motor_cozmo import base_oled_stable_only
+        from cozmo_companion.core.cozmo01_recovery import (
+            reset_udp_permitido_no_modo_atual,
+        )
 
         if (
             os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1"
-            and not base_oled_stable_only()
+            and reset_udp_permitido_no_modo_atual()
         ):
             logger.warning("Boot — reset UDP explícito para limpar COZMO 01")
             self._reconectar_sessao_udp(
@@ -1288,7 +1290,7 @@ class Companion(CompanionVoz):
             )
             return True
         if os.environ.get("COZMO_BOOT_FRESH_SESSION", "0") == "1":
-            logger.info("Boot — reset UDP desligado no modo OLED estável")
+            logger.info("Boot — reset UDP bloqueado pela política atual")
 
         if sessao_parece_fresca(self.cli):
             logger.info("Boot — sessão OK (rx=%d), sem reset", d["recv_frames"])

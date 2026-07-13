@@ -64,7 +64,11 @@ class TestSessaoBoot(unittest.TestCase):
 
     @patch.dict(
         os.environ,
-        {"COZMO_BOOT_FRESH_SESSION": "1", "COZMO_BASE_STABLE_OLED": "1"},
+        {
+            "COZMO_BOOT_FRESH_SESSION": "1",
+            "COZMO_BASE_STABLE_OLED": "1",
+            "COZMO_BASE_STABLE_ALLOW_RESET": "0",
+        },
     )
     @patch("cozmo_companion.core.companion.cozmo_alcanavel", return_value=True)
     @patch("cozmo_companion.core.companion.diagnostico", return_value={"recv_frames": 64})
@@ -79,3 +83,28 @@ class TestSessaoBoot(unittest.TestCase):
         c._reconectar_sessao_udp = MagicMock()
         Companion._sessao_fresca_no_boot(c)
         c._reconectar_sessao_udp.assert_not_called()
+
+    @patch.dict(
+        os.environ,
+        {
+            "COZMO_BOOT_FRESH_SESSION": "1",
+            "COZMO_BASE_STABLE_OLED": "1",
+            "COZMO_BASE_STABLE_ALLOW_RESET": "1",
+        },
+    )
+    @patch("cozmo_companion.core.companion.cozmo_alcanavel", return_value=True)
+    @patch("cozmo_companion.core.companion.diagnostico", return_value={"recv_frames": 64})
+    def test_boot_estavel_reseta_quando_override_explicitamente_ligado(
+        self, _diag, _alc
+    ) -> None:
+        from cozmo_companion.core.companion import Companion
+
+        c = MagicMock(spec=Companion)
+        c.cli = self._cli(64)
+        c._monitor_rx = MagicMock()
+        c._gov = MagicMock()
+        c._reconectar_sessao_udp = MagicMock(return_value=True)
+        Companion._sessao_fresca_no_boot(c)
+        c._reconectar_sessao_udp.assert_called_once_with(
+            silencioso=False, forcado=True, cozmo01=True
+        )

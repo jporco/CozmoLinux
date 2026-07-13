@@ -1125,6 +1125,7 @@ class Companion(CompanionVoz):
         cozmo01: bool = False,
     ) -> bool:
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
+        na_base_agora = self._na_base_efetivo()
         if reset_cozmo01:
             from cozmo_companion.core.cozmo01_recovery import (
                 reset_udp_permitido_no_modo_atual,
@@ -1136,7 +1137,7 @@ class Companion(CompanionVoz):
                 rx_morto_s,
             )
 
-            if base_oled_stable_only() and (rx_link_ok() or rx_morto_s() <= float(
+            if na_base_agora and base_oled_stable_only() and (rx_link_ok() or rx_morto_s() <= float(
                 os.environ.get("COZMO01_RESET_RX_DEAD_MIN_S", "30")
             )):
                 logger.warning(
@@ -1150,7 +1151,7 @@ class Companion(CompanionVoz):
                 self._garantir_rosto_base()
                 return False
 
-            if not reset_udp_permitido_no_modo_atual():
+            if na_base_agora and not reset_udp_permitido_no_modo_atual():
                 logger.warning(
                     "COZMO 01 — reset UDP bloqueado pelo OLED estável"
                 )
@@ -1185,7 +1186,7 @@ class Companion(CompanionVoz):
         cooldown = float(os.environ.get("COZMO_RATIO_PREVENT_COOLDOWN_S", "25"))
         if not forcado and agora - self._ultimo_reconnect_udp < cooldown:
             return False
-        if not self._sessao_guard.tentar_reconectar():
+        if not self._sessao_guard.tentar_reconectar(forcar=forcado):
             return False
         if not silencioso:
             logger.warning("COZMO 01 — reconexão UDP")
@@ -1270,6 +1271,16 @@ class Companion(CompanionVoz):
                 else:
                     resetar_sessao_oled_base()
                     modo_base_olhos(self.cli)
+            else:
+                # Fora da base não existe regra de preservar OLED estável: se o
+                # socket velho morreu, a sessão nova precisa voltar com câmera,
+                # sensores e animações livres.
+                try:
+                    self._face.cli = self.cli
+                    if self._base.mesa_escolhida:
+                        self._face.ligar(na_base=False, forcar=True)
+                except Exception as exc:
+                    logger.debug("Pós-reconnect livre: face/câmera: %s", exc)
             self._marcar_udp_quieto(quiet_pre)
             logger.info("Reconexão UDP OK — quieto %.0fs", quiet_pre)
             ok = True
@@ -1592,6 +1603,16 @@ class Companion(CompanionVoz):
                 ),
                 recuperar_inplace=lambda: self._recuperar_udp(forcado=True),
             )
+            return
+
+        if not self._na_base_efetivo() and not g.rx_ok and not busy:
+            if cozmo_rota_ap() or cozmo_alcanavel():
+                logger.warning("Sessão livre sem RX — reabrindo UDP")
+                self._reconectar_sessao_udp(
+                    silencioso=False,
+                    forcado=True,
+                    cozmo01=True,
+                )
             return
 
         if (busy or quieto) and g.rx_ok:

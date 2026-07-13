@@ -196,7 +196,7 @@ class TestCompanionBase(unittest.TestCase):
                 c, silencioso=False, forcado=True, cozmo01=True
             )
         self.assertFalse(ok)
-        c._sessao_guard.tentar_reconectar.assert_called_once_with()
+        c._sessao_guard.tentar_reconectar.assert_called_once_with(forcar=True)
 
     def test_reset_cozmo01_duplicado_respeita_estabilizacao(self) -> None:
         c = MagicMock(spec=Companion)
@@ -223,6 +223,7 @@ class TestCompanionBase(unittest.TestCase):
         c._gov._medidor = MagicMock()
         c._garantir_rosto_base = MagicMock()
         c._sessao_guard = MagicMock()
+        c._na_base_efetivo = MagicMock(return_value=True)
         with patch(
             "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
             return_value=True,
@@ -243,3 +244,22 @@ class TestCompanionBase(unittest.TestCase):
         ligar_oled.assert_called_once_with(c.cli, forcar=True)
         c._garantir_rosto_base.assert_called_once_with()
         c._sessao_guard.tentar_reconectar.assert_not_called()
+
+    def test_reset_cozmo01_estavel_nao_bloqueia_fora_da_base(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._ultimo_reconnect_udp = 0.0
+        c._sessao_guard = MagicMock()
+        c._sessao_guard.tentar_reconectar.return_value = False
+        c._na_base_efetivo = MagicMock(return_value=False)
+        with patch(
+            "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
+            return_value=True,
+        ), patch.dict(
+            os.environ,
+            {"COZMO_BASE_STABLE_OLED": "1", "COZMO_BASE_STABLE_ALLOW_RESET": "0"},
+        ):
+            ok = Companion._reconectar_sessao_udp(
+                c, silencioso=False, forcado=True, cozmo01=True
+            )
+        self.assertFalse(ok)
+        c._sessao_guard.tentar_reconectar.assert_called_once_with(forcar=True)

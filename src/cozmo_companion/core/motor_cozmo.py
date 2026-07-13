@@ -3644,10 +3644,24 @@ def _iniciar_display_keeper(
             from cozmo_companion.display.rosto import solicitar_reacao_visual
 
             g = grupo.lower()
-            if any(p in g for p in ("happy", "laugh", "win", "react")):
+            if any(p in g for p in ("sleep", "tired", "snore", "gotobed")):
+                solicitar_reacao_visual("sleepy", frames=5)
+            elif any(p in g for p in ("happy", "laugh", "win", "victory", "yes", "reacthappy")):
                 solicitar_reacao_visual("happy", frames=5)
-            elif any(p in g for p in ("hiccup", "surprise", "sneeze", "shock")):
+            elif any(p in g for p in ("amazed", "wonder", "wow", "awe")):
+                solicitar_reacao_visual("awe", frames=5)
+            elif any(p in g for p in ("hiccup", "surprise", "sneeze", "shock", "dizzy")):
                 solicitar_reacao_visual("surprise", frames=5)
+            elif any(p in g for p in ("yuck", "annoy", "frustrat")):
+                solicitar_reacao_visual("annoyed", frames=5)
+            elif any(p in g for p in ("bored", "idle", "nothingtodo")):
+                solicitar_reacao_visual("bored", frames=4)
+            elif any(p in g for p in ("search", "look", "curious", "chatty", "idk", "wondering")):
+                solicitar_reacao_visual("curious", frames=5)
+            elif any(p in g for p in ("angry", "mad", "furious")):
+                solicitar_reacao_visual("angry", frames=5)
+            elif any(p in g for p in ("sad", "fail", "lose")):
+                solicitar_reacao_visual("sad", frames=5)
             else:
                 solicitar_reacao_visual("curious", frames=4)
         grupo = None

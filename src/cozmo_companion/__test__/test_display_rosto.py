@@ -38,3 +38,14 @@ def test_blink_nunca_apaga_oled() -> None:
     im = rosto._render_olhos_visiveis("blink", 1)
 
     assert im.getbbox() is not None
+
+
+def test_idle_tem_variedade_e_anti_repeticao() -> None:
+    rosto._reset_estado_para_teste(seed=7)
+
+    exprs = [rosto._expressao_idle(i) for i in range(1, 36)]
+    sem_blink = [e for e in exprs if e != "blink"]
+
+    assert len(set(sem_blink)) >= 7
+    for a, b, c in zip(sem_blink, sem_blink[1:], sem_blink[2:]):
+        assert not (a == b == c)

@@ -9,7 +9,9 @@ keyframes pelo keeper leve.
 from __future__ import annotations
 
 import math
+import random
 import threading
+from collections import deque
 
 import numpy as np
 from PIL import Image
@@ -20,6 +22,10 @@ _visible_lock = threading.Lock()
 _visible_idx = 0
 _reaction_expr: str | None = None
 _reaction_frames = 0
+_idle_expr: str = "idle"
+_idle_hold_frames = 0
+_recent_exprs: deque[str] = deque(maxlen=5)
+_rng = random.Random()
 
 LARGURA = 128
 ALTURA = 32
@@ -49,32 +55,48 @@ _ALIASES = {
     "blink": "blink",
 }
 
-_IDLE_SEQUENCE = (
-    "idle",
-    "idle",
-    "curious",
-    "idle",
-    "focused",
-    "idle",
-    "skeptical",
-    "idle",
-    "bored",
-    "idle",
-    "happy",
-    "idle",
+_IDLE_POOL: tuple[tuple[str, float], ...] = (
+    # Peso maior em estados "vivos" neutros, mas com cauda longa suficiente
+    # para não parecer script de 3 frames.
+    ("idle", 18),
+    ("curious", 15),
+    ("focused", 11),
+    ("skeptical", 8),
+    ("bored", 7),
+    ("happy", 7),
+    ("worried", 5),
+    ("awe", 4),
+    ("annoyed", 3),
+    ("sad", 2),
+    ("surprise", 2),
 )
 
 
 def solicitar_reacao_visual(tipo: str, *, frames: int = 5) -> None:
     """Agenda uma expressão curta para o keeper OLED da base."""
-    global _reaction_expr, _reaction_frames
+    global _reaction_expr, _reaction_frames, _idle_hold_frames
     with _visible_lock:
         _reaction_expr = _normalizar_expr(tipo)
         _reaction_frames = max(1, int(frames))
+        _idle_hold_frames = 0
 
 
 def _normalizar_expr(tipo: str | None) -> str:
     return _ALIASES.get((tipo or "").strip().lower(), "curious")
+
+
+def _reset_estado_para_teste(seed: int = 1) -> None:
+    """Reseta o gerador procedural para testes determinísticos."""
+    global _visible_idx, _reaction_expr, _reaction_frames
+    global _idle_expr, _idle_hold_frames
+    with _visible_lock:
+        _visible_idx = 0
+        _reaction_expr = None
+        _reaction_frames = 0
+        _idle_expr = "idle"
+        _idle_hold_frames = 0
+        _recent_exprs.clear()
+        _rng.seed(seed)
 
 
 def _encode_face(im: Image.Image) -> protocol_encoder.DisplayImage:
@@ -268,9 +290,30 @@ def _render_olhos_visiveis(expr: str, idx: int) -> Image.Image:
 
 
 def _expressao_idle(idx: int) -> str:
-    if idx % 23 == 7 or idx % 41 == 19:
+    global _idle_expr, _idle_hold_frames
+    # Piscadas são raras e curtas; não entram como "estado" para não virar
+    # repetição visível em 0.5 Hz.
+    if idx % 29 == 7 or idx % 47 == 19:
         return "blink"
-    return _IDLE_SEQUENCE[(idx // 5) % len(_IDLE_SEQUENCE)]
+
+    if _idle_hold_frames > 0:
+        _idle_hold_frames -= 1
+        return _idle_expr
+
+    candidatos = [
+        (expr, peso)
+        for expr, peso in _IDLE_POOL
+        if expr not in _recent_exprs
+    ]
+    if not candidatos:
+        candidatos = list(_IDLE_POOL)
+    exprs, pesos = zip(*candidatos)
+    _idle_expr = _rng.choices(exprs, weights=pesos, k=1)[0]
+    _recent_exprs.append(_idle_expr)
+    # 0.5 Hz: segurar 1-2 frames dá 2-4s por micro-estado. Mais que isso
+    # parece congelado para quem está olhando.
+    _idle_hold_frames = _rng.choice((0, 0, 1))
+    return _idle_expr
 
 
 def _proximo_frame_visivel() -> Image.Image:

@@ -1249,6 +1249,15 @@ def variar_clip_base_oled(cli: "pycozmo.Client", *, forcado: bool = False) -> bo
         return False
     if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
         return False
+    if not forcado and _oled_fase_aplicada != "verde":
+        logger.debug(
+            "Base OLED: variação adiada — fase=%s",
+            _oled_fase_aplicada,
+        )
+        return False
+    if forcado and not rx_link_ok():
+        logger.debug("Base OLED: variação forçada adiada — RX não está OK")
+        return False
     _ultimo_variar_clip = agora
     _ultimos_clips_base.append(nome)
     anti = max(2, int(os.environ.get("COZMO_BASE_VARIAR_ANTI_REPEAT", "3")))
@@ -1448,16 +1457,19 @@ def _duracao_clip_base_s() -> float:
 
 
 def _base_oled_anim_loop_ativo() -> bool:
-    if base_oled_stable_only():
+    modo = os.environ.get("COZMO_BASE_OLED_ANIM_LOOP", "auto").strip().lower()
+    if modo in ("0", "off", "false", "no"):
+        return False
+    # COZMO_BASE_STABLE_OLED evita misturar várias estratégias por padrão, mas
+    # quando o loop é ligado explicitamente ele deve prevalecer. Caso contrário
+    # a base fica presa no keeper de 1 frame/seg e parece sem animação na OLED.
+    if base_oled_stable_only() and modo not in ("1", "on", "true", "yes"):
         return False
     if _base_oled_animado_desativado():
         return False
     if _base_oled_ppclip_em_backoff():
         return False
     if _oled_fase_aplicada != "verde":
-        return False
-    modo = os.environ.get("COZMO_BASE_OLED_ANIM_LOOP", "auto").strip().lower()
-    if modo in ("0", "off", "false", "no"):
         return False
     if modo in ("1", "on", "true", "yes"):
         return True

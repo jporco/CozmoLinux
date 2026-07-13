@@ -302,7 +302,9 @@ class TestMotorCozmo(unittest.TestCase):
             with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
                 self.assertFalse(base_oled_usa_proc_vivo(cli))
 
-    def test_base_stable_bloqueia_stream_e_proc_30fps(self) -> None:
+    def test_base_stable_bloqueia_stream_e_proc_30fps_mas_permite_loop_explicito(
+        self,
+    ) -> None:
         from cozmo_companion.core.motor_cozmo import (
             _base_oled_anim_loop_ativo,
             _charger_play_stream,
@@ -321,8 +323,19 @@ class TestMotorCozmo(unittest.TestCase):
         ):
             with patch("cozmo_companion.core.charger.na_base_oled", return_value=True):
                 self.assertFalse(_charger_play_stream(cli))
-                self.assertFalse(_base_oled_anim_loop_ativo())
+                self.assertTrue(_base_oled_anim_loop_ativo())
                 self.assertFalse(base_oled_usa_proc_vivo(cli))
+
+        with patch.dict(
+            "os.environ",
+            {
+                "COZMO_BASE_STABLE_OLED": "1",
+                "COZMO_CHARGER_PLAY_STREAM": "1",
+                "COZMO_BASE_OLED_ANIM_LOOP": "auto",
+                "COZMO_BASE_OLED_MODE": "proc",
+            },
+        ):
+            self.assertFalse(_base_oled_anim_loop_ativo())
 
     def test_modo_livre_estavel_nao_liga_face_procedural(self) -> None:
         from cozmo_companion.core.motor_cozmo import modo_mesa_vivo

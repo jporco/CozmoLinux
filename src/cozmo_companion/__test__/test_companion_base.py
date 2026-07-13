@@ -229,9 +229,9 @@ class TestCompanionBase(unittest.TestCase):
         ), patch(
             "cozmo_companion.core.companion.despertar_sessao_leve"
         ) as despertar, patch(
-            "cozmo_companion.core.motor_cozmo.resgatar_oled_estavel_sem_reset",
+            "cozmo_companion.core.motor_cozmo.ligar_oled_base",
             return_value=True,
-        ) as resgatar, patch.dict(
+        ) as ligar_oled, patch.dict(
             os.environ,
             {"COZMO_BASE_STABLE_OLED": "1", "COZMO_BASE_STABLE_ALLOW_RESET": "0"},
         ):
@@ -240,6 +240,6 @@ class TestCompanionBase(unittest.TestCase):
             )
         self.assertFalse(ok)
         despertar.assert_called_once_with(c.cli, c._monitor_rx, c._gov._medidor)
-        resgatar.assert_called_once_with(c.cli, motivo="reset_bloqueado")
+        ligar_oled.assert_called_once_with(c.cli, forcar=True)
         c._garantir_rosto_base.assert_called_once_with()
         c._sessao_guard.tentar_reconectar.assert_not_called()

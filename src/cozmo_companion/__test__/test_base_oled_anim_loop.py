@@ -132,12 +132,23 @@ class TestBaseOledAnimLoop(unittest.TestCase):
         cli = MagicMock()
         fake_thread = MagicMock()
         motor._base_oled_anim_loop_pausado_ate = time.monotonic() + 60.0
-        with patch("cozmo_companion.core.motor_cozmo.threading.Thread", return_value=fake_thread) as thread:
-            motor.iniciar_oled_keepalive_base(cli)
-            thread.assert_not_called()
-            motor.iniciar_oled_keepalive_base(cli, durante_backoff=True)
+        with patch.dict("os.environ", {"COZMO_BASE_STABLE_OLED": "0"}):
+            with patch("cozmo_companion.core.motor_cozmo.threading.Thread", return_value=fake_thread) as thread:
+                motor.iniciar_oled_keepalive_base(cli)
+                thread.assert_not_called()
+                motor.iniciar_oled_keepalive_base(cli, durante_backoff=True)
         fake_thread.start.assert_called_once()
         motor._oled_keepalive_thread = None
+
+    def test_backoff_na_base_estavel_nao_cria_keepalive_paralelo(self) -> None:
+        cli = MagicMock()
+        fake_thread = MagicMock()
+        motor._base_oled_anim_loop_pausado_ate = time.monotonic() + 60.0
+        with patch.dict("os.environ", {"COZMO_BASE_STABLE_OLED": "1"}):
+            with patch("cozmo_companion.core.motor_cozmo.threading.Thread", return_value=fake_thread) as thread:
+                motor.iniciar_oled_keepalive_base(cli, durante_backoff=True)
+        thread.assert_not_called()
+        fake_thread.start.assert_not_called()
 
     def test_animado_desativado_bloqueia_ppclip_direto(self) -> None:
         cli = MagicMock()

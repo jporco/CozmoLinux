@@ -1531,6 +1531,14 @@ def _pausar_base_oled_anim_loop_por_stall(cli: "pycozmo.Client") -> None:
     # Keeper parado nao pode continuar marcado como ativo, senao o keepalive
     # de backoff sai imediatamente e a OLED fica sem emissor.
     _charger_keeper_ativo = False
+    if base_oled_stable_only():
+        hz = float(os.environ.get("COZMO_BASE_OLED_STALL_HZ", "0.25"))
+        _iniciar_display_keeper(cli, max(0.1, min(0.5, hz)))
+        logger.warning(
+            "Base OLED: stall RX — mantendo apenas keeper procedural %.2f Hz",
+            max(0.1, min(0.5, hz)),
+        )
+        return
     try:
         iniciar_oled_keepalive_base(cli, durante_backoff=True)
     except Exception:
@@ -2564,6 +2572,8 @@ def iniciar_oled_keepalive_base(
     cli: "pycozmo.Client", *, durante_backoff: bool = False
 ) -> None:
     global _oled_keepalive_thread, _charger_keeper_ativo
+    if base_oled_stable_only():
+        return
     if keeper_base_ativo():
         return
     if _charger_keeper_ativo:
@@ -3508,6 +3518,7 @@ def _loop_display_keeper(cli: "pycozmo.Client", hz: float, geracao: int) -> None
     interval = 1.0 / hz
     ac = cli.anim_controller
     frame_n = 0
+    ultimo_log = time.monotonic()
     while not _display_keeper_cancelado(geracao):
         if (
             _base_oled_animado_desativado()
@@ -3537,6 +3548,10 @@ def _loop_display_keeper(cli: "pycozmo.Client", hz: float, geracao: int) -> None
             enviar_oled(cli, pkt)
             global _ultimo_exibir_clip_em
             _ultimo_exibir_clip_em = time.monotonic()
+            agora = time.monotonic()
+            if agora - ultimo_log >= 15.0:
+                ultimo_log = agora
+                logger.info("Base OLED procedural TX vivo %.1f Hz", hz)
         except Exception as exc:
             logger.debug("display_keeper: %s", exc)
         if _display_stop.wait(interval):
@@ -4605,6 +4620,13 @@ def manter_oled_base_ativo(cli: "pycozmo.Client") -> bool:
         return True
     if not base_oled_usa_charger(cli) or not _oled_sessao_viva(cli):
         return False
+    if base_oled_stable_only():
+        hz = min(
+            float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "0.5")),
+            float(os.environ.get("COZMO_OLED_VERDE_KEEPER_HZ", "0.5")),
+        )
+        _iniciar_display_keeper(cli, max(0.1, hz))
+        return True
     if _base_oled_anim_loop_ativo() and not _clip_loop_vivo():
         return _garantir_base_oled_anim_loop(cli)
     ac = cli.anim_controller
@@ -4671,6 +4693,11 @@ def _oled_tx_direto(cli: "pycozmo.Client") -> bool:
     COZMO 01. O caminho padrão precisa passar pelo AnimationController, só que
     sem manter o loop 30 FPS ligado continuamente.
     """
+    if base_oled_stable_only():
+        # Na base estável/procedural, DisplayImage cru é falso positivo:
+        # o link responde, mas a tela pode continuar em COZMO 01/preta.
+        # O frame que desenhou no robô real foi OutputSilence+DisplayImage.
+        return False
     if os.environ.get("COZMO_OLED_DIRECT", "0") == "1":
         return True
     return False

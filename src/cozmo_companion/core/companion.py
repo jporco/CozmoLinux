@@ -1105,7 +1105,7 @@ class Companion(CompanionVoz):
             )
             from cozmo_companion.core.motor_cozmo import (
                 base_oled_stable_only,
-                resgatar_oled_estavel_sem_reset,
+                ligar_oled_base,
                 rx_link_ok,
                 rx_morto_s,
             )
@@ -1118,12 +1118,9 @@ class Companion(CompanionVoz):
                 )
                 despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
                 try:
-                    resgatar_oled_estavel_sem_reset(
-                        self.cli,
-                        motivo="reset_bloqueado",
-                    )
+                    ligar_oled_base(self.cli, forcar=True)
                 except Exception as exc:
-                    logger.debug("resgate OLED estável: %s", exc)
+                    logger.debug("religar OLED procedural: %s", exc)
                 self._garantir_rosto_base()
                 return False
 
@@ -1134,15 +1131,12 @@ class Companion(CompanionVoz):
                 despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
                 try:
                     from cozmo_companion.core.motor_cozmo import (
-                        resgatar_oled_estavel_sem_reset,
+                        ligar_oled_base,
                     )
 
-                    resgatar_oled_estavel_sem_reset(
-                        self.cli,
-                        motivo="reset_bloqueado",
-                    )
+                    ligar_oled_base(self.cli, forcar=True)
                 except Exception as exc:
-                    logger.debug("resgate OLED estável: %s", exc)
+                    logger.debug("religar OLED procedural: %s", exc)
                 self._garantir_rosto_base()
                 return False
         # COZMO 01 é uma tela do firmware. RX vivo e frame enviado pelo PC não

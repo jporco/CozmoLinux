@@ -55,8 +55,12 @@ def _render_olhos_visiveis(expr: str, idx: int) -> Image.Image:
     draw = ImageDraw.Draw(im)
     fase = idx % 16
     if expr == "blink" or fase == 7:
-        draw.rounded_rectangle((5, 14, 58, 18), radius=2, fill=1)
-        draw.rounded_rectangle((70, 14, 123, 18), radius=2, fill=1)
+        # Nunca fechar totalmente: na webcam/robô real a linha fina parece tela
+        # apagada. Mantém brilho suficiente para o Cozmo parecer vivo sempre.
+        draw.rounded_rectangle((5, 11, 58, 23), radius=5, fill=1)
+        draw.rounded_rectangle((70, 11, 123, 23), radius=5, fill=1)
+        draw.rectangle((20, 15, 43, 19), fill=0)
+        draw.rectangle((85, 15, 108, 19), fill=0)
         return im
     if expr == "sleep":
         draw.arc((6, 10, 58, 29), start=190, end=350, fill=1, width=3)

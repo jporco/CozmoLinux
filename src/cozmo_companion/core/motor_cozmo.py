@@ -2638,6 +2638,72 @@ def _semear_oled_charger(cli: "pycozmo.Client", grupo: str | None) -> bool:
         return False
 
 
+def resgatar_oled_estavel_sem_reset(cli: "pycozmo.Client", *, motivo: str = "") -> bool:
+    """Acorda OLED sem Disconnect UDP.
+
+    Quando o firmware aceita UDP/RX mas a tela fica preta/COZMO 01, o reset UDP
+    costuma piorar a experiência. Este caminho segue a ideia do SDK/pycozmo:
+    envia StartAnimation + DisplayImage reais por uma janela curta e depois
+    deixa o keeper estável assumir de novo.
+    """
+    global _ultimo_exibir_clip_em, _ultimo_exibir_clip_grupo, _charger_oled_nome
+    if modo_sono_oled_ativo() or _sono_oled_texto_ativo:
+        return False
+    if not base_oled_stable_only() or not base_oled_usa_charger(cli):
+        return False
+    from cozmo_companion.core.anims import pool_variacao_oled_base
+    from cozmo_companion.core.conexao import diagnostico
+
+    disp = set(cli.animation_groups.keys())
+    pool = list(_pool_oled_com_frames(cli, pool_variacao_oled_base(disp, cli)))
+    with _charger_oled_lock:
+        atual = _charger_oled_nome
+    grupo = _escolher_clip_variar(pool, atual=atual, recentes=_ultimos_clips_base)
+    if not grupo:
+        grupo = atual or os.environ.get("COZMO_CHARGER_AWAKE_IDLE", "IdleOnCharger")
+    frames = _frames_clip_oled(cli, grupo)
+    if not frames:
+        return _semear_oled_charger(cli, grupo)
+
+    segundos = float(os.environ.get("COZMO_STABLE_OLED_RESCUE_S", "2.8"))
+    hz = float(os.environ.get("COZMO_STABLE_OLED_RESCUE_HZ", "6"))
+    intervalo = 1.0 / max(1.0, min(12.0, hz))
+    fim = time.monotonic() + max(0.5, min(6.0, segundos))
+    enviados = 0
+    try:
+        _desligar_anim_controller_base(cli)
+        _handshake_frame_oled(cli, force=True)
+        d0 = diagnostico(cli)
+        while time.monotonic() < fim:
+            if enviados % 6 == 0:
+                _handshake_frame_oled(cli, force=True)
+                cli.conn.send(protocol_encoder.SyncTime())
+                cli.conn.send(protocol_encoder.Ping())
+            pkt = frames[enviados % len(frames)]
+            cli.conn.send(pkt)
+            cli.anim_controller.last_image_pkt = pkt
+            enviados += 1
+            time.sleep(intervalo)
+        d1 = diagnostico(cli)
+        _ultimo_exibir_clip_em = time.monotonic()
+        _ultimo_exibir_clip_grupo = grupo
+        with _charger_oled_lock:
+            _charger_oled_nome = grupo
+        _iniciar_keeper_clip_oled_base(cli, grupo)
+        logger.warning(
+            "Base OLED: resgate estável sem reset motivo=%s grupo=%s frames=%d rx+=%d tx+=%d",
+            motivo or "-",
+            grupo,
+            enviados,
+            int(d1["recv_frames"] - d0["recv_frames"]),
+            int(d1["sent_frames"] - d0["sent_frames"]),
+        )
+        return True
+    except Exception as exc:
+        logger.warning("Base OLED: resgate estável falhou: %s", exc)
+        return False
+
+
 def _rx_parou_na_janela(cli: "pycozmo.Client", janela_s: float = 12.0) -> bool:
     """True só ao fechar a janela sem crescimento de recv_frames (≠ spam a cada tick)."""
     global _renovar_rx_snap, _renovar_rx_em

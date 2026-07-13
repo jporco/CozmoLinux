@@ -24,6 +24,16 @@ _stop = threading.Event()
 
 
 def keepalive_ativo() -> bool:
+    try:
+        from cozmo_companion.core.motor_cozmo import base_oled_stable_only
+
+        if base_oled_stable_only() and os.environ.get(
+            "COZMO_STABLE_RADIO_KEEPALIVE",
+            "0",
+        ) != "1":
+            return False
+    except Exception:
+        pass
     return os.environ.get("COZMO_RADIO_KEEPALIVE", "1") == "1"
 
 

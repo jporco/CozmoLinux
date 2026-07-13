@@ -1109,6 +1109,17 @@ class Companion(CompanionVoz):
                     "COZMO 01 — reset UDP bloqueado pelo OLED estável"
                 )
                 despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
+                try:
+                    from cozmo_companion.core.motor_cozmo import (
+                        resgatar_oled_estavel_sem_reset,
+                    )
+
+                    resgatar_oled_estavel_sem_reset(
+                        self.cli,
+                        motivo="reset_bloqueado",
+                    )
+                except Exception as exc:
+                    logger.debug("resgate OLED estável: %s", exc)
                 self._garantir_rosto_base()
                 return False
         # COZMO 01 é uma tela do firmware. RX vivo e frame enviado pelo PC não

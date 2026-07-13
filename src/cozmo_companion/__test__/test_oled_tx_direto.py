@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 
 class TestOledTxDireto(unittest.TestCase):
-    def test_keeper_usa_pulso_anim_controller_por_padrao(self) -> None:
+    def test_keeper_usa_burst_oled_por_padrao(self) -> None:
         from cozmo_companion.core import motor_cozmo as mc
 
         cli = MagicMock()
@@ -15,9 +15,9 @@ class TestOledTxDireto(unittest.TestCase):
         with patch.dict(os.environ, {"COZMO_OLED_DIRECT": "0"}, clear=False):
             with patch.object(mc, "keeper_base_ativo", return_value=True):
                 with patch.object(mc, "_charger_keeper_ativo", False):
-                    with patch.object(mc, "_pulso_oled_anim_controller") as pulso:
+                    with patch.object(mc, "_burst_oled_display_image") as burst:
                         mc.enviar_oled(cli, pkt)
-        pulso.assert_called_once_with(cli, pkt)
+        burst.assert_called_once_with(cli, pkt)
         cli.conn.send.assert_not_called()
 
     def test_envio_direto_so_com_flag_explicita(self) -> None:

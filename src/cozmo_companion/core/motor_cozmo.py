@@ -3475,6 +3475,8 @@ def _keeper_envia_durante_audio() -> bool:
 
 
 def _keeper_pausa_anim_audio(ac) -> bool:
+    if base_oled_stable_only():
+        return False
     if _keeper_envia_durante_audio():
         return bool(ac.playing_animation)
     return bool(ac.playing_animation or ac.playing_audio)
@@ -3650,7 +3652,20 @@ def _iniciar_display_keeper(
     ac = cli.anim_controller
     ac.enable_procedural_face(False)
     ac.enable_animations(False)
-    _garantir_thread_anim(cli)
+    if ac.thread and ac.thread.is_alive():
+        _parar_thread_anim(cli)
+    if grupo is None:
+        try:
+            from cozmo_companion.display.rosto import pkt_rosto_procedural
+
+            pkt_inicial = pkt_rosto_procedural(cli)
+            _burst_oled_display_image(cli, pkt_inicial)
+            global _ultimo_exibir_clip_em, _ultimo_exibir_clip_grupo
+            _ultimo_exibir_clip_em = time.monotonic()
+            _ultimo_exibir_clip_grupo = "procedural"
+            logger.info("Base OLED: frame procedural inicial enviado")
+        except Exception as exc:
+            logger.warning("Base OLED: frame procedural inicial falhou: %s", exc)
     _display_stop.clear()
     _display_generation += 1
     geracao = _display_generation
@@ -4661,38 +4676,67 @@ def _oled_tx_direto(cli: "pycozmo.Client") -> bool:
     return False
 
 
-def _pulso_oled_anim_controller(
+def _burst_oled_display_image(
     cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage
 ) -> None:
-    """Envia um frame OLED pela sessão nativa sem deixar flood 30 FPS vivo."""
+    """Envia um frame OLED aceito pela firmware sem ligar o loop 30 FPS.
+
+    Evidência no HW5: ``AnimationController`` contínuo trava o RX e volta para
+    COZMO 01; ``DisplayImage`` cru sozinho mantém TX/RX mas a firmware ignora a
+    tela. O par mínimo que desenhou pela webcam foi ``OutputSilence`` seguido de
+    ``DisplayImage``, repetido em burst curto.
+    """
     ac = cli.anim_controller
     try:
-        _garantir_thread_anim(cli)
-    except Exception:
-        pass
-    try:
         ac.enable_procedural_face(False)
+        ac.enable_animations(False)
     except Exception:
         pass
     try:
-        # Evita backlog quando o keeper troca de reação ou quando a CPU atrasa.
         ac.queue.clear()
     except Exception:
         pass
     try:
-        ac.enable_animations(True)
-        ac.display_image(pkt)
-        pausa = float(os.environ.get("COZMO_OLED_FRAME_PULSE_S", "0.06"))
-        time.sleep(max(0.02, min(0.15, pausa)))
-    finally:
+        if ac.thread and ac.thread.is_alive():
+            _parar_thread_anim(cli)
+    except Exception:
+        pass
+    try:
+        cli.conn.send(protocol_encoder.EnableAnimationState())
+    except Exception:
+        pass
+    repeticoes = max(1, min(8, int(os.environ.get("COZMO_OLED_BURST_FRAMES", "4"))))
+    gap = max(0.015, min(0.08, float(os.environ.get("COZMO_OLED_BURST_GAP_S", "0.033"))))
+    for _ in range(repeticoes):
         try:
-            ac.enable_animations(False)
+            cli.conn.send(protocol_encoder.OutputSilence())
+            cli.conn.send(pkt)
         except Exception:
-            pass
+            raise
+        if gap > 0:
+            time.sleep(gap)
+    try:
+        ac.last_image_pkt = pkt
+    except Exception:
+        pass
+    if not getattr(_burst_oled_display_image, "_log_ok", False):
+        _burst_oled_display_image._log_ok = True  # type: ignore[attr-defined]
         try:
-            ac.last_image_pkt = pkt
+            tam = len(bytes(pkt.image))
         except Exception:
-            pass
+            tam = -1
+        logger.info(
+            "OLED burst manual ativo: %d pares silence+image, %d B",
+            repeticoes,
+            tam,
+        )
+
+
+def _pulso_oled_anim_controller(
+    cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage
+) -> None:
+    """Compat: nome antigo agora usa burst manual sem AnimationController."""
+    _burst_oled_display_image(cli, pkt)
 
 
 def enviar_oled(cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage) -> None:
@@ -4704,7 +4748,7 @@ def enviar_oled(cli: "pycozmo.Client", pkt: protocol_encoder.DisplayImage) -> No
         if _imagem_vazia(ac.last_image_pkt):
             ac.last_image_pkt = pkt
     else:
-        _pulso_oled_anim_controller(cli, pkt)
+        _burst_oled_display_image(cli, pkt)
 
 
 def ping_oob(cli: "pycozmo.Client", vezes: int = 1) -> None:

@@ -415,8 +415,10 @@ class TestMotorCozmo(unittest.TestCase):
             "os.environ",
             {"COZMO_OLED_DIRECT": "0", "COZMO_BASE_OLED_MODE": "anim"},
         ):
-            enviar_oled(cli, pkt)
-        cli.anim_controller.display_image.assert_called_with(pkt)
+            with patch.object(motor, "_burst_oled_display_image") as burst:
+                enviar_oled(cli, pkt)
+        burst.assert_called_once_with(cli, pkt)
+        cli.anim_controller.display_image.assert_not_called()
 
     def test_enviar_audio_direto_sem_flood(self) -> None:
         cli = MagicMock()

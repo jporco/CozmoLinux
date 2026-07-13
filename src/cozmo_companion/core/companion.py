@@ -205,6 +205,12 @@ class Companion(CompanionVoz):
         """Pouca luz entra em sono real; não apenas troca o desenho dos olhos."""
         if not self._na_base_efetivo():
             return
+        try:
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("sleepy", frames=4)
+        except Exception:
+            pass
         if os.environ.get("COZMO_SONO_NA_BASE", "0") != "1":
             return
         self._sono_por_escuro = True
@@ -217,6 +223,13 @@ class Companion(CompanionVoz):
 
     def _on_ambiente_claro(self) -> None:
         """A luz voltar acorda somente o sono iniciado pelo ambiente."""
+        if self._na_base_efetivo():
+            try:
+                from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+                solicitar_reacao_visual("wake", frames=4)
+            except Exception:
+                pass
         if not self._sono_por_escuro:
             return
         self._sono_por_escuro = False
@@ -313,6 +326,19 @@ class Companion(CompanionVoz):
         if evento.kind == PerceptionEventKind.LIGHT_LEVEL:
             return
         self._pet_livre.registrar_evento(evento)
+        if self._na_base_efetivo() and evento.kind in (
+            PerceptionEventKind.FACE_SEEN,
+            PerceptionEventKind.MOTION_HINT,
+        ):
+            try:
+                from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+                solicitar_reacao_visual(
+                    "happy" if evento.kind == PerceptionEventKind.FACE_SEEN else "curious",
+                    frames=4,
+                )
+            except Exception:
+                pass
         if evento.kind in (
             PerceptionEventKind.FACE_SEEN,
             PerceptionEventKind.MOTION_HINT,

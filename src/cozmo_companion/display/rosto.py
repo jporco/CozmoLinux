@@ -1,12 +1,20 @@
-"""Rosto OLED em pacotes DisplayImage — keepalive sem flood 30fps."""
+"""Rosto OLED em pacotes DisplayImage — procedural no estilo Cozmo.
+
+O caminho da base não pode usar o AnimationController 30fps continuamente,
+porque no HW5 real isso travou RX e voltou para COZMO 01. Este módulo renderiza
+frames proceduralmente usando o mesmo modelo visual do pycozmo e envia só
+keyframes pelo keeper leve.
+"""
 
 from __future__ import annotations
 
+import math
 import threading
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 from pycozmo import image_encoder, protocol_encoder
+from pycozmo.procedural_face import ProceduralFace
 
 _visible_lock = threading.Lock()
 _visible_idx = 0
@@ -16,21 +24,62 @@ _reaction_frames = 0
 LARGURA = 128
 ALTURA = 32
 
+_ALIASES = {
+    "idle": "idle",
+    "curious": "curious",
+    "wake": "curious",
+    "focused": "focused",
+    "sound": "surprise",
+    "surprise": "surprise",
+    "awe": "awe",
+    "happy": "happy",
+    "pet": "glee",
+    "glee": "glee",
+    "sleep": "sleepy",
+    "sleepy": "sleepy",
+    "dark": "sleepy",
+    "escuro": "sleepy",
+    "bored": "bored",
+    "annoyed": "annoyed",
+    "skeptical": "skeptical",
+    "worried": "worried",
+    "sad": "sad",
+    "angry": "angry",
+    "scared": "scared",
+    "blink": "blink",
+}
+
+_IDLE_SEQUENCE = (
+    "idle",
+    "idle",
+    "curious",
+    "idle",
+    "focused",
+    "idle",
+    "skeptical",
+    "idle",
+    "bored",
+    "idle",
+    "happy",
+    "idle",
+)
+
 
 def solicitar_reacao_visual(tipo: str, *, frames: int = 5) -> None:
-    """Pede uma expressao curta para o keeper de olhos grandes da base."""
+    """Agenda uma expressão curta para o keeper OLED da base."""
     global _reaction_expr, _reaction_frames
-    expr = (tipo or "").strip().lower()
-    if expr not in {"happy", "pet", "wake", "sound", "surprise", "curious"}:
-        expr = "curious"
     with _visible_lock:
-        _reaction_expr = expr
+        _reaction_expr = _normalizar_expr(tipo)
         _reaction_frames = max(1, int(frames))
 
 
-def _encode_face(im) -> protocol_encoder.DisplayImage:
+def _normalizar_expr(tipo: str | None) -> str:
+    return _ALIASES.get((tipo or "").strip().lower(), "curious")
+
+
+def _encode_face(im: Image.Image) -> protocol_encoder.DisplayImage:
     arr = np.array(im)
-    if arr.ndim >= 2 and (arr.shape[0] != 32 or arr.shape[1] != 128):
+    if arr.ndim >= 2 and (arr.shape[0] != ALTURA or arr.shape[1] != LARGURA):
         pil = Image.fromarray(arr).resize((LARGURA, ALTURA))
     else:
         pil = Image.fromarray(arr)
@@ -42,66 +91,199 @@ def _encode_face(im) -> protocol_encoder.DisplayImage:
     return protocol_encoder.DisplayImage(image=bytes(enc.encode()))
 
 
-def _olho(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], *, pupila: int = 0) -> None:
-    draw.rounded_rectangle(box, radius=8, fill=1)
-    if pupila:
-        x0, y0, x1, y1 = box
-        cx = (x0 + x1) // 2 + pupila
-        draw.rounded_rectangle((cx - 5, y0 + 7, cx + 5, y1 - 6), radius=3, fill=0)
+def _base_face(idx: int) -> ProceduralFace:
+    face = ProceduralFace(width=128, height=64)
+    # Olhos um pouco mais próximos, como no app original.
+    face.eyes[0].center_x += 9
+    face.eyes[1].center_x -= 9
+    # Saccades discretos e irregulares. O keeper roda lento, então cada frame
+    # precisa parecer vivo sem depender de 30fps.
+    fase_x = (-8, -4, 0, 5, 8, 2, -5, 0)[(idx // 3) % 8]
+    fase_y = (0, -7, -2, 4, 0, -4, 5, 0)[(idx // 5) % 8]
+    face.center_x = fase_x
+    face.center_y = fase_y + math.sin(idx * 0.45) * 2.0
+    return face
+
+
+def _set_top(face: ProceduralFace, y: float, *, bend: float = 0.25, angle_l: float = 0.0, angle_r: float = 0.0) -> None:
+    face.eyes[0].lids[0].y = y
+    face.eyes[1].lids[0].y = y
+    face.eyes[0].lids[0].bend = bend
+    face.eyes[1].lids[0].bend = bend
+    face.eyes[0].lids[0].angle = angle_l
+    face.eyes[1].lids[0].angle = angle_r
+
+
+def _set_bottom(face: ProceduralFace, y: float, *, bend: float = 0.25, angle_l: float = 0.0, angle_r: float = 0.0) -> None:
+    face.eyes[0].lids[1].y = y
+    face.eyes[1].lids[1].y = y
+    face.eyes[0].lids[1].bend = bend
+    face.eyes[1].lids[1].bend = bend
+    face.eyes[0].lids[1].angle = angle_l
+    face.eyes[1].lids[1].angle = angle_r
+
+
+def _aplicar_expr(face: ProceduralFace, expr: str, idx: int) -> None:
+    expr = _normalizar_expr(expr)
+    pulse = math.sin(idx * 0.7) * 0.04
+
+    if expr == "idle":
+        face.eyes[0].scale_y = 0.92 + pulse
+        face.eyes[1].scale_y = 0.92 - pulse
+        return
+
+    if expr == "curious":
+        face.eyes[0].scale_x = 1.12
+        face.eyes[0].scale_y = 1.06
+        face.eyes[1].scale_x = 0.92
+        face.eyes[1].scale_y = 0.82
+        face.eyes[0].angle = -2
+        face.eyes[1].angle = 2
+        face.center_x += 5
+        return
+
+    if expr == "focused":
+        face.eyes[0].scale_y = 0.72
+        face.eyes[1].scale_y = 0.72
+        face.eyes[0].scale_x = 1.12
+        face.eyes[1].scale_x = 1.12
+        _set_top(face, 0.18, bend=0.15)
+        _set_bottom(face, 0.12, bend=0.1)
+        return
+
+    if expr == "skeptical":
+        face.eyes[0].scale_y = 0.72
+        face.eyes[1].scale_y = 0.95
+        _set_top(face, 0.22, bend=0.2, angle_l=-7, angle_r=4)
+        face.center_x -= 4
+        return
+
+    if expr == "happy":
+        face.eyes[0].scale_x = 1.12
+        face.eyes[1].scale_x = 1.12
+        face.eyes[0].scale_y = 0.74
+        face.eyes[1].scale_y = 0.74
+        _set_top(face, 0.24, bend=0.45)
+        face.center_y -= 5
+        return
+
+    if expr == "glee":
+        face.eyes[0].scale_x = 1.35
+        face.eyes[1].scale_x = 1.35
+        face.eyes[0].scale_y = 0.62
+        face.eyes[1].scale_y = 0.62
+        _set_top(face, 0.34, bend=0.65)
+        face.center_y -= 6
+        return
+
+    if expr == "surprise":
+        face.eyes[0].scale_x = 1.05
+        face.eyes[1].scale_x = 1.05
+        face.eyes[0].scale_y = 1.18
+        face.eyes[1].scale_y = 1.18
+        face.center_y -= 5
+        return
+
+    if expr == "awe":
+        face.eyes[0].scale_x = 1.25
+        face.eyes[1].scale_x = 1.25
+        face.eyes[0].scale_y = 1.22
+        face.eyes[1].scale_y = 1.22
+        face.center_y -= 4
+        return
+
+    if expr == "worried":
+        face.eyes[0].scale_y = 0.88
+        face.eyes[1].scale_y = 0.88
+        _set_top(face, 0.15, bend=0.25, angle_l=7, angle_r=-7)
+        _set_bottom(face, 0.10, bend=0.1)
+        face.center_y += 4
+        return
+
+    if expr == "sad":
+        face.eyes[0].scale_y = 0.72
+        face.eyes[1].scale_y = 0.72
+        _set_top(face, 0.28, bend=0.25, angle_l=8, angle_r=-8)
+        _set_bottom(face, 0.18, bend=0.2)
+        face.center_y += 10
+        return
+
+    if expr == "bored":
+        face.eyes[0].scale_x = 1.25
+        face.eyes[1].scale_x = 1.25
+        face.eyes[0].scale_y = 0.40
+        face.eyes[1].scale_y = 0.40
+        _set_top(face, 0.30, bend=0.15)
+        face.center_y += 5
+        return
+
+    if expr == "annoyed":
+        face.eyes[0].scale_y = 0.55
+        face.eyes[1].scale_y = 0.55
+        _set_top(face, 0.33, bend=0.2, angle_l=-6, angle_r=6)
+        face.eyes[0].angle = -2
+        face.eyes[1].angle = 2
+        return
+
+    if expr == "angry":
+        face.eyes[0].scale_y = 0.62
+        face.eyes[1].scale_y = 0.62
+        face.eyes[0].scale_x = 1.12
+        face.eyes[1].scale_x = 1.12
+        _set_top(face, 0.35, bend=0.15, angle_l=-12, angle_r=12)
+        _set_bottom(face, 0.10, bend=0.1, angle_l=4, angle_r=-4)
+        return
+
+    if expr == "scared":
+        face.eyes[0].scale_y = 1.12
+        face.eyes[1].scale_y = 1.12
+        _set_bottom(face, 0.18, bend=0.3)
+        face.center_y -= 3
+        return
+
+    if expr == "sleepy":
+        face.eyes[0].scale_x = 1.35
+        face.eyes[1].scale_x = 1.35
+        face.eyes[0].scale_y = 0.22
+        face.eyes[1].scale_y = 0.22
+        _set_top(face, 0.40, bend=0.6)
+        face.center_y += 7
+        return
+
+    if expr == "blink":
+        # Nunca y=0: a OLED não pode parecer apagada.
+        face.eyes[0].scale_x = 1.65
+        face.eyes[1].scale_x = 1.65
+        face.eyes[0].scale_y = 0.18
+        face.eyes[1].scale_y = 0.18
+        face.center_y += 2
 
 
 def _render_olhos_visiveis(expr: str, idx: int) -> Image.Image:
-    im = Image.new("1", (LARGURA, ALTURA), color=0)
-    draw = ImageDraw.Draw(im)
-    fase = idx % 16
-    if expr == "blink" or fase == 7:
-        # Nunca fechar totalmente: na webcam/robô real a linha fina parece tela
-        # apagada. Mantém brilho suficiente para o Cozmo parecer vivo sempre.
-        draw.rounded_rectangle((5, 11, 58, 23), radius=5, fill=1)
-        draw.rounded_rectangle((70, 11, 123, 23), radius=5, fill=1)
-        draw.rectangle((20, 15, 43, 19), fill=0)
-        draw.rectangle((85, 15, 108, 19), fill=0)
-        return im
-    if expr == "sleep":
-        draw.arc((6, 10, 58, 29), start=190, end=350, fill=1, width=3)
-        draw.arc((70, 10, 122, 29), start=190, end=350, fill=1, width=3)
-        return im
-    if expr in {"happy", "pet"}:
-        _olho(draw, (5, 7, 58, 29), pupila=-3)
-        _olho(draw, (70, 7, 123, 29), pupila=3)
-        draw.rectangle((5, 7, 58, 13), fill=0)
-        draw.rectangle((70, 7, 123, 13), fill=0)
-        return im
-    if expr in {"sound", "surprise"}:
-        draw.ellipse((6, 2, 58, 31), fill=1)
-        draw.ellipse((70, 2, 122, 31), fill=1)
-        draw.ellipse((25, 11, 39, 24), fill=0)
-        draw.ellipse((89, 11, 103, 24), fill=0)
-        return im
-    if expr in {"wake", "curious"}:
-        _olho(draw, (5, 3, 58, 30), pupila=7 if fase < 8 else -4)
-        _olho(draw, (73, 8, 121, 27), pupila=3 if fase < 8 else -6)
-        return im
-    olhar = (-6, 0, 6, 0)[(fase // 4) % 4]
-    _olho(draw, (4, 4, 59, 29), pupila=olhar)
-    _olho(draw, (69, 4, 124, 29), pupila=olhar)
-    return im
+    face = _base_face(idx)
+    _aplicar_expr(face, expr, idx)
+    im64 = face.render()
+    im32 = Image.fromarray(np.array(im64)[::2]).convert("1")
+    return im32.resize((LARGURA, ALTURA)) if im32.size != (LARGURA, ALTURA) else im32
+
+
+def _expressao_idle(idx: int) -> str:
+    if idx % 23 == 7 or idx % 41 == 19:
+        return "blink"
+    return _IDLE_SEQUENCE[(idx // 5) % len(_IDLE_SEQUENCE)]
 
 
 def _proximo_frame_visivel() -> Image.Image:
     global _visible_idx, _reaction_expr, _reaction_frames
     with _visible_lock:
         _visible_idx += 1
-        expr = "idle"
         if _reaction_frames > 0 and _reaction_expr:
             expr = _reaction_expr
             _reaction_frames -= 1
             if _reaction_frames <= 0:
                 _reaction_expr = None
-        elif _visible_idx % 37 in (0, 1):
-            expr = "curious"
-        elif _visible_idx % 16 == 7:
-            expr = "blink"
+        else:
+            expr = _expressao_idle(_visible_idx)
         return _render_olhos_visiveis(expr, _visible_idx)
 
 

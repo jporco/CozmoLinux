@@ -2085,7 +2085,14 @@ class Companion(CompanionVoz):
                     self._motion_reactions.update(self.cli)
                 self._processar_stt()
                 if not online:
-                    self.tela.tick(direct=False)
+                    if not cozmo_rota_ap() and not cozmo_ssid_visivel(rescan=False):
+                        from cozmo_companion.core.motor_cozmo import (
+                            parar_oled_offline_base,
+                        )
+
+                        parar_oled_offline_base()
+                    else:
+                        self.tela.tick(direct=False)
                     time.sleep(loop_sleep)
                     continue
                 self._fila.tick(self.cli)

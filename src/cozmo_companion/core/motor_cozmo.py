@@ -923,6 +923,18 @@ def vigiar_rodas_na_base(cli: "pycozmo.Client", *, preso: bool) -> None:
     del cli, preso
 
 
+def parar_oled_offline_base() -> None:
+    """AP do Cozmo ausente: não tente manter OLED/sessão via socket antigo."""
+    global _charger_replay_pendente, _charger_keeper_ativo, _charger_stream_sessao
+    _charger_replay_pendente = False
+    _charger_keeper_ativo = False
+    _charger_stream_sessao = False
+    _parar_charger_worker(timeout=0.5)
+    _parar_base_oled_anim_loop(timeout=0.5)
+    _parar_display_keeper()
+    _parar_oled_keepalive_base()
+
+
 def cortar_flood_udp_base(cli: "pycozmo.Client") -> None:
     """Corta emissor OLED pesado quando TX acumula ou RX para."""
     global _charger_replay_pendente

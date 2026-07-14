@@ -3650,10 +3650,20 @@ def _iniciar_display_keeper(
                 solicitar_reacao_visual("happy", frames=5)
             elif any(p in g for p in ("amazed", "wonder", "wow", "awe")):
                 solicitar_reacao_visual("awe", frames=5)
+            elif any(p in g for p in ("zombie", "scared", "fear")):
+                solicitar_reacao_visual("scared", frames=5)
             elif any(p in g for p in ("hiccup", "surprise", "sneeze", "shock", "dizzy")):
                 solicitar_reacao_visual("surprise", frames=5)
+            elif any(p in g for p in ("dancing", "dance", "mambo", "sing")):
+                solicitar_reacao_visual("glee", frames=5)
             elif any(p in g for p in ("yuck", "annoy", "frustrat")):
                 solicitar_reacao_visual("annoyed", frames=5)
+            elif any(p in g for p in ("enter", "start", "wake")):
+                solicitar_reacao_visual("focused", frames=4)
+            elif any(p in g for p in ("exit", "leave", "bye")):
+                solicitar_reacao_visual("skeptical", frames=4)
+            elif any(p in g for p in ("idk", "confused")):
+                solicitar_reacao_visual("worried", frames=5)
             elif any(p in g for p in ("bored", "idle", "nothingtodo")):
                 solicitar_reacao_visual("bored", frames=4)
             elif any(p in g for p in ("search", "look", "curious", "chatty", "idk", "wondering")):

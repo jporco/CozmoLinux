@@ -1123,6 +1123,7 @@ class Companion(CompanionVoz):
         silencioso: bool = True,
         forcado: bool = False,
         cozmo01: bool = False,
+        apos_wifi: bool = False,
     ) -> bool:
         reset_cozmo01 = cozmo01 and permitir_reset_udp_cozmo01()
         na_base_agora = self._na_base_efetivo()
@@ -1137,9 +1138,14 @@ class Companion(CompanionVoz):
                 rx_morto_s,
             )
 
-            if na_base_agora and base_oled_stable_only() and (rx_link_ok() or rx_morto_s() <= float(
+            if (
+                na_base_agora
+                and not apos_wifi
+                and base_oled_stable_only()
+                and (rx_link_ok() or rx_morto_s() <= float(
                 os.environ.get("COZMO01_RESET_RX_DEAD_MIN_S", "30")
-            )):
+                ))
+            ):
                 logger.warning(
                     "COZMO 01 — reset UDP bloqueado (RX ainda recuperável)"
                 )
@@ -1151,7 +1157,7 @@ class Companion(CompanionVoz):
                 self._garantir_rosto_base()
                 return False
 
-            if na_base_agora and not reset_udp_permitido_no_modo_atual():
+            if na_base_agora and not apos_wifi and not reset_udp_permitido_no_modo_atual():
                 logger.warning(
                     "COZMO 01 — reset UDP bloqueado pelo OLED estável"
                 )
@@ -1301,6 +1307,7 @@ class Companion(CompanionVoz):
             silencioso=False,
             forcado=True,
             cozmo01=True,
+            apos_wifi=True,
         )
         if ok:
             from cozmo_companion.core.charger import definir_oled_preso_na_base, em_base
@@ -1469,6 +1476,7 @@ class Companion(CompanionVoz):
                 )
             else:
                 wifi_ok = False
+                definir_rx_link_ok(False)
                 cortar_flood_udp_base(self.cli)
                 self._gov.marcar_quieto(
                     float(os.environ.get("COZMO_OFFLINE_QUIET_S", "45"))

@@ -155,6 +155,7 @@ class TestCompanionBase(unittest.TestCase):
             silencioso=False,
             forcado=True,
             cozmo01=True,
+            apos_wifi=True,
         )
         self.assertTrue(c._base._preso_na_base)
         self.assertFalse(c._base._mesa_escolhida)
@@ -176,6 +177,7 @@ class TestCompanionBase(unittest.TestCase):
             silencioso=False,
             forcado=True,
             cozmo01=True,
+            apos_wifi=True,
         )
         self.assertFalse(c._base._preso_na_base)
         self.assertTrue(c._base._mesa_escolhida)

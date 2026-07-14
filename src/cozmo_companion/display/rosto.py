@@ -12,6 +12,7 @@ import math
 import random
 import threading
 from collections import deque
+import logging
 
 import numpy as np
 from PIL import Image
@@ -26,6 +27,7 @@ _idle_expr: str = "idle"
 _idle_hold_frames = 0
 _recent_exprs: deque[str] = deque(maxlen=5)
 _rng = random.Random()
+logger = logging.getLogger("cozmo.rosto")
 
 LARGURA = 128
 ALTURA = 32
@@ -56,19 +58,21 @@ _ALIASES = {
 }
 
 _IDLE_POOL: tuple[tuple[str, float], ...] = (
-    # Peso maior em estados "vivos" neutros, mas com cauda longa suficiente
-    # para não parecer script de 3 frames.
-    ("idle", 18),
-    ("curious", 15),
+    # Na câmera/OLED real, diferenças sutis somem. O "idle" fica leve e o
+    # descanso vira uma rotação de micro-estados, sem depender de comandos.
+    ("curious", 13),
     ("focused", 11),
-    ("skeptical", 8),
+    ("skeptical", 9),
+    ("happy", 8),
     ("bored", 7),
-    ("happy", 7),
-    ("worried", 5),
-    ("awe", 4),
-    ("annoyed", 3),
-    ("sad", 2),
-    ("surprise", 2),
+    ("awe", 6),
+    ("worried", 6),
+    ("surprise", 5),
+    ("glee", 4),
+    ("annoyed", 4),
+    ("scared", 3),
+    ("sad", 3),
+    ("idle", 2),
 )
 
 
@@ -284,6 +288,11 @@ def _aplicar_expr(face: ProceduralFace, expr: str, idx: int) -> None:
 def _render_olhos_visiveis(expr: str, idx: int) -> Image.Image:
     face = _base_face(idx)
     _aplicar_expr(face, expr, idx)
+    for eye in face.eyes:
+        # A câmera/webcam e o OLED real deixam diferenças sutis parecidas.
+        # Aumenta a assinatura visual sem voltar ao desenho genérico antigo.
+        eye.scale_x *= 1.18
+        eye.scale_y *= 1.08
     im64 = face.render()
     im32 = Image.fromarray(np.array(im64)[::2]).convert("1")
     return im32.resize((LARGURA, ALTURA)) if im32.size != (LARGURA, ALTURA) else im32
@@ -310,9 +319,9 @@ def _expressao_idle(idx: int) -> str:
     exprs, pesos = zip(*candidatos)
     _idle_expr = _rng.choices(exprs, weights=pesos, k=1)[0]
     _recent_exprs.append(_idle_expr)
-    # 0.5 Hz: segurar 1-2 frames dá 2-4s por micro-estado. Mais que isso
-    # parece congelado para quem está olhando.
-    _idle_hold_frames = _rng.choice((0, 0, 1))
+    # Não segura por padrão. A taxa real pode cair para 0.5 Hz em link ruim; se
+    # segurarmos frames aqui, a webcam enxerga sempre as mesmas 2-3 expressões.
+    _idle_hold_frames = 0
     return _idle_expr
 
 
@@ -327,6 +336,8 @@ def _proximo_frame_visivel() -> Image.Image:
                 _reaction_expr = None
         else:
             expr = _expressao_idle(_visible_idx)
+        if _visible_idx % 12 == 0:
+            logger.info("OLED procedural expressão=%s frame=%d", expr, _visible_idx)
         return _render_olhos_visiveis(expr, _visible_idx)
 
 

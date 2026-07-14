@@ -1140,6 +1140,22 @@ class Companion(CompanionVoz):
 
             if (
                 na_base_agora
+                and base_oled_stable_only()
+                and not reset_udp_permitido_no_modo_atual()
+            ):
+                logger.warning(
+                    "COZMO 01 — reset UDP bloqueado na base estável; mantendo sessão"
+                )
+                despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
+                try:
+                    ligar_oled_base(self.cli, forcar=True)
+                except Exception as exc:
+                    logger.debug("religar OLED procedural: %s", exc)
+                self._garantir_rosto_base()
+                return False
+
+            if (
+                na_base_agora
                 and not apos_wifi
                 and base_oled_stable_only()
                 and (rx_link_ok() or rx_morto_s() <= float(

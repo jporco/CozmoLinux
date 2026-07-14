@@ -2996,6 +2996,14 @@ def _loop_charger_oled(cli: "pycozmo.Client") -> None:
                 continue
             if not base_oled_usa_charger(cli):
                 continue
+            if not rx_link_ok():
+                continue
+            # No modo keeper estável a thread BaseOledKeeper já mantém a tela.
+            # Este loop era redundante e, em HW5, ficava gastando CPU/rádio com
+            # refresh e variação enquanto o keeper já estava ativo.
+            if keeper_base_ativo() and base_oled_carga_cheia_ativo(cli):
+                tick_espiar_escuro(cli)
+                continue
             if base_oled_usa_proc_vivo(cli):
                 _refresh_sessao_oled_leve(cli)
                 continue

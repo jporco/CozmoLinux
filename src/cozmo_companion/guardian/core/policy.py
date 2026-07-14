@@ -11,6 +11,7 @@ from pathlib import Path
 
 from cozmo_companion.guardian.core.health import Saude
 from cozmo_companion.guardian.core import actions
+from cozmo_companion.core.paths import health_file
 
 
 class AcaoGuardian(Enum):
@@ -52,7 +53,7 @@ class EstadoGuardian:
 
 
 def _health_json_estagnado(root: Path, max_s: float) -> bool:
-    path = root / "data" / "cozmo-saude.json"
+    path = health_file(root)
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         ts = datetime.fromisoformat(str(raw["ts"]))

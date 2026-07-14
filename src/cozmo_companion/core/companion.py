@@ -1140,6 +1140,7 @@ class Companion(CompanionVoz):
 
             if (
                 na_base_agora
+                and not apos_wifi
                 and base_oled_stable_only()
                 and not reset_udp_permitido_no_modo_atual()
             ):
@@ -1511,7 +1512,13 @@ class Companion(CompanionVoz):
                     if pode_tentar_wifi():
                         wifi_ok = reconectar_wifi()
                 if wifi_ok:
+                    # ``g`` foi calculado antes da reconexão e ainda carrega
+                    # pedir_wifi=True. Se continuarmos neste tick, o bloco
+                    # abaixo abre uma segunda sessão imediatamente e derruba a
+                    # que acabou de ficar saudável. Retome no próximo tick com
+                    # métricas frescas.
                     self._reabrir_udp_apos_wifi()
+                    return
                 if not cozmo_alcanavel():
                     if not g.rx_ok:
                         cortar_flood_udp_base(self.cli)

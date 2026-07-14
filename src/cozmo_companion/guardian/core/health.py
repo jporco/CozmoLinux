@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from cozmo_companion.core.paths import health_file
+
 ROBOT_IP = "172.31.1.1"
 SERVICE = "cozmo-companion.service"
 LOCK_FILE = Path("/tmp/cozmo-companion.lock")
@@ -278,7 +280,7 @@ def ler_json(caminho: Path) -> Saude | None:
 
 def ler_saude(root: Path, log_path: Path) -> Saude:
     """JSON é a fonte primária; log existe apenas como fallback legado."""
-    estruturada = ler_json(root / "data" / "cozmo-saude.json")
+    estruturada = ler_json(health_file(root))
     return estruturada if estruturada is not None else ler_log(log_path)
 
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 from datetime import datetime
@@ -17,7 +18,22 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HEALTH = ROOT / "data" / "cozmo-saude.json"
+
+
+def _health_file() -> Path:
+    raw = os.environ.get("COZMO_HEALTH_FILE", "").strip()
+    if not raw:
+        try:
+            for line in (ROOT / "config.env").read_text(encoding="utf-8").splitlines():
+                if line.startswith("COZMO_HEALTH_FILE="):
+                    raw = line.split("=", 1)[1].strip()
+                    break
+        except OSError:
+            pass
+    return Path(raw).expanduser() if raw else ROOT / "data" / "cozmo-saude.json"
+
+
+HEALTH = _health_file()
 LOG = ROOT / "cozmo-companheiro.log"
 OUT = ROOT / "outputs" / "oled-monitor"
 

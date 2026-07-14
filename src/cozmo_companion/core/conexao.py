@@ -11,6 +11,7 @@ from collections import deque
 from pathlib import Path
 
 from cozmo_companion.core.config import network_tuning
+from cozmo_companion.core.paths import health_file
 
 logger = logging.getLogger("cozmo.conexao")
 
@@ -490,7 +491,7 @@ def gravar_saude(cli, *, extra: dict | None = None) -> None:
     """Snapshot para QA automático (data/cozmo-saude.json)."""
     try:
         d = diagnostico(cli)
-        path = ROOT / "data" / "cozmo-saude.json"
+        path = health_file()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),

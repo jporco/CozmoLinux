@@ -1195,6 +1195,26 @@ class TestOledAntiEstatico(unittest.TestCase):
         motor._oled_fase_aplicada = "verde"
         motor._oled_fase_observada = "verde"
 
+    def test_stable_keeper_base_usa_clip_oficial_default(self) -> None:
+        cli = MagicMock()
+        motor._charger_oled_nome = None
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "COZMO_BASE_STABLE_OLED": "1",
+                    "COZMO_BASE_OLED_CHARGER": "1",
+                    "COZMO_OLED_KEEPER_MAX_HZ": "0.8",
+                    "COZMO_OLED_VERDE_KEEPER_HZ": "0.8",
+                },
+            ),
+            patch.object(motor, "base_oled_usa_charger", return_value=True),
+            patch.object(motor, "_oled_sessao_viva", return_value=True),
+            patch.object(motor, "_iniciar_display_keeper") as iniciar,
+        ):
+            self.assertTrue(motor.manter_oled_base_ativo(cli))
+        iniciar.assert_called_once_with(cli, 0.8, grupo="IdleOnCharger")
+
     def test_watchdog_anim_presa_cancela_uma_vez(self) -> None:
         cli = MagicMock()
         cli.anim_controller.playing_animation = True

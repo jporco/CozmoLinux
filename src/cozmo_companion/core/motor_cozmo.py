@@ -4669,7 +4669,11 @@ def manter_oled_base_ativo(cli: "pycozmo.Client") -> bool:
             float(os.environ.get("COZMO_OLED_KEEPER_MAX_HZ", "0.5")),
             float(os.environ.get("COZMO_OLED_VERDE_KEEPER_HZ", "0.5")),
         )
-        _iniciar_display_keeper(cli, max(0.1, hz))
+        with _charger_oled_lock:
+            grupo = _charger_oled_nome
+        if not grupo:
+            grupo = os.environ.get("COZMO_CHARGER_AWAKE_IDLE", "IdleOnCharger")
+        _iniciar_display_keeper(cli, max(0.1, hz), grupo=grupo)
         return True
     if _base_oled_anim_loop_ativo() and not _clip_loop_vivo():
         return _garantir_base_oled_anim_loop(cli)

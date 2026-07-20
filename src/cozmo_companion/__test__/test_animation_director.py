@@ -36,6 +36,18 @@ class TestAnimationDirector(unittest.TestCase):
             "ReactToCliff",
         )
 
+    def test_movimento_na_base_escolhe_reacao_visual_segura(self) -> None:
+        disp = {"CodeLabCurious", "CodeLabAmazed", "DriveOffCharger"}
+        pool = AnimationDirector().pool(disp, ContextoAnim.BASE, AnimIntent.MOTION)
+        self.assertIn("CodeLabCurious", pool)
+        self.assertNotIn("DriveOffCharger", pool)
+
+    def test_som_tem_repertorio_diferente_do_idle(self) -> None:
+        disp = {"CodeLabWhew", "Hiccup", "IdleOnCharger"}
+        pool = AnimationDirector().pool(disp, ContextoAnim.BASE, AnimIntent.SOUND)
+        self.assertIn("CodeLabWhew", pool)
+        self.assertNotIn("IdleOnCharger", pool)
+
 
 if __name__ == "__main__":
     unittest.main()

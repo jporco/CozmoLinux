@@ -40,6 +40,13 @@ def test_guard_sessao_cooldown():
     assert g.tentar_reconectar() is False
 
 
+def test_guard_sessao_forcado_ignora_cooldown():
+    g = GuardSessao()
+    assert g.tentar_reconectar() is True
+    g.liberar(sucesso=True)
+    assert g.tentar_reconectar(forcar=True) is True
+
+
 def test_guard_circuito_abre_apos_falhas(monkeypatch):
     monkeypatch.setenv("COZMO_RECONNECT_MAX_FAIL", "2")
     monkeypatch.setenv("COZMO_RECONNECT_CIRCUIT_S", "1")

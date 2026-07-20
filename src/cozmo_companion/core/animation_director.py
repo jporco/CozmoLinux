@@ -25,10 +25,15 @@ class AnimIntent(str, Enum):
     AMBIENT = "ambient"
     LIGHT = "light"
     FACE_SEEN = "face_seen"
+    MOTION = "motion"
+    SOUND = "sound"
     NOTIFICATION = "notification"
     PET = "pet"
     SLEEP = "sleep"
     CLIFF = "cliff"
+    PICKED_UP = "picked_up"
+    SHAKE = "shake"
+    PUT_DOWN = "put_down"
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,24 @@ class AnimationDirector:
             candidatos = GRUPOS_SONO
         elif intent == AnimIntent.FACE_SEEN:
             candidatos = GRUPOS_CURIOSO + GRUPOS_BASE_VIVO
+        elif intent == AnimIntent.MOTION:
+            candidatos = (
+                "CodeLabHeadsUp",
+                "CodeLabCurious",
+                "CodeLabAmazed",
+                "InterestedFace",
+                "LookInPlaceForFacesHeadMovePause",
+                "CodeLabWhew",
+            )
+        elif intent == AnimIntent.SOUND:
+            candidatos = (
+                "CodeLabAmazed",
+                "CodeLabExcited",
+                "CodeLabWhew",
+                "CodeLabCurious",
+                "InterestedFace",
+                "Hiccup",
+            )
         elif intent == AnimIntent.NOTIFICATION:
             candidatos = (
                 "InterestedFace",
@@ -56,10 +79,39 @@ class AnimationDirector:
             candidatos = GRUPOS_CARINHO_BASE if ctx != ContextoAnim.MESA else GRUPOS_CARINHO_MESA
         elif intent == AnimIntent.CLIFF:
             candidatos = GRUPOS_SUSTO
+        elif intent == AnimIntent.PICKED_UP:
+            candidatos = (
+                "ReactToPokeReaction",
+                "CodeLabAmazed",
+                "CodeLabWhew",
+                "InterestedFace",
+                "CodeLabCurious",
+            )
+        elif intent == AnimIntent.SHAKE:
+            candidatos = (
+                "CodeLabDizzy",
+                "CodeLabWhoa",
+                "CodeLabWhew",
+                "CodeLabUnhappy",
+                "ReactToPokeReaction",
+                "CodeLabAmazed",
+            )
+        elif intent == AnimIntent.PUT_DOWN:
+            candidatos = (
+                "CodeLabHappy",
+                "CodeLabYes",
+                "CodeLabReactHappy",
+                "InterestedFace",
+                "NeutralFace",
+            )
         elif intent == AnimIntent.LIGHT:
-            if ctx == ContextoAnim.BASE:
-                return pool_variacao_oled_base(disponiveis)
-            candidatos = GRUPOS_CURIOSO
+            candidatos = (
+                "CodeLabBlink",
+                "CodeLabAmazed",
+                "CodeLabCurious",
+                "InterestedFace",
+                "NeutralFace",
+            )
         else:
             candidatos = GRUPOS_BASE_DESCANSO if ctx == ContextoAnim.BASE else GRUPOS_MESA
 

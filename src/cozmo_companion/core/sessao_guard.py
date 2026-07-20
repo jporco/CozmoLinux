@@ -33,9 +33,11 @@ class GuardSessao:
             return False
         return time.monotonic() - self._reconnect_em >= self.cooldown_s()
 
-    def tentar_reconectar(self) -> bool:
+    def tentar_reconectar(self, *, forcar: bool = False) -> bool:
         """Adquire lock exclusivo; False = outro reconnect em curso ou cooldown."""
-        if not self.pode_reconectar():
+        if self.circuito_aberto():
+            return False
+        if not forcar and not self.pode_reconectar():
             return False
         ok = self._lock.acquire(blocking=False)
         if ok:

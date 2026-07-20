@@ -38,9 +38,12 @@ class TestFaceWatch(unittest.TestCase):
         fw = FaceWatch.__new__(FaceWatch)
         fw._event_sink = eventos.append
         fw._prev_motion_frame = None
+        fw._frames_janela = 4
+        fw._motion_hits = 0
         fw._na_base = False
         fw._emitir_movimento(np.asarray(Image.new("L", (32, 32), 0)))
         fw._emitir_movimento(np.asarray(Image.new("L", (32, 32), 255)))
+        fw._emitir_movimento(np.asarray(Image.new("L", (32, 32), 0)))
         self.assertTrue(any(e.kind == PerceptionEventKind.MOTION_HINT for e in eventos))
 
 

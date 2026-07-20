@@ -1962,6 +1962,17 @@ class Companion(CompanionVoz):
         )
 
         definir_oled_preso_na_base(self._base.preso_na_base)
+        try:
+            gravar_saude(
+                self.cli,
+                extra={
+                    "fase": "boot_oled",
+                    "rx_ok": True,
+                    "preso_base": self._base.preso_na_base,
+                },
+            )
+        except Exception:
+            pass
 
         from cozmo_companion.core.motor_cozmo import (
             definir_modo_sono_oled,
@@ -1980,6 +1991,7 @@ class Companion(CompanionVoz):
             if not base_oled_usa_charger(self.cli):
                 parar_flood_anim(self.cli)
             definir_modo_sono_oled(False)
+            time.sleep(float(os.environ.get("COZMO_BOOT_OLED_SETTLE_S", "0.35")))
             self._vida._marcar_acordado(
                 self.cli,
                 motivo="boot",

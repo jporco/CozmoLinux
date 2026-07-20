@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -256,9 +257,12 @@ def ler_json(caminho: Path) -> Saude | None:
         return None
     idade = max(0.0, time.time() - ts.timestamp())
     rx_ok = bool(raw.get("rx_ok", True))
+    ping_ok = rx_ok
+    if idade > float(os.environ.get("GUARDIAN_JSON_FRESH_PING_SKIP_S", "180")):
+        ping_ok = ping_robo()
     sessao = SessaoLog(
         estado=estado,
-        ping="OK" if rx_ok else "FAIL",
+        ping="OK" if ping_ok else "FAIL",
         bateria_v=bateria,
         rx=rx,
         tx=tx,
@@ -269,7 +273,7 @@ def ler_json(caminho: Path) -> Saude | None:
     preso = raw.get("preso_base")
     return Saude(
         servico_ativo=servico_ativo(),
-        ping_ok=ping_robo(),
+        ping_ok=ping_ok,
         sessao=sessao,
         erros_recentes=0,
         ultimo_erro=None,

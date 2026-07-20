@@ -4,9 +4,9 @@ O rádio (PC e/ou AP do Cozmo) entra em power-save com tráfego esparso: a latê
 sobe de <1ms para 300-460ms e os frames de animação (30fps) passam a ser entregues
 em rajada, estourando o buffer do firmware do robô → tela COZMO 01.
 
-Solução: um fluxo contínuo e leve de pacotes UDP (porta fora do protocolo pycozmo)
-mantém o rádio acordado. Não toca o firmware de aplicação — só impede o power-save,
-então os frames chegam suaves. É o oposto do flood nocivo: previne a rajada.
+Em alguns firmwares/modos de base o tráfego UDP extra também pode provocar perda
+de sessão e retorno para COZMO 01. Por isso este recurso é opt-in: só liga com
+COZMO_RADIO_KEEPALIVE=1. O caminho padrão mantém apenas o fluxo OLED/pycozmo.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ def keepalive_ativo() -> bool:
             return False
     except Exception:
         pass
-    return os.environ.get("COZMO_RADIO_KEEPALIVE", "1") == "1"
+    return os.environ.get("COZMO_RADIO_KEEPALIVE", "0") == "1"
 
 
 def _loop(ip: str, porta: int, intervalo: float) -> None:

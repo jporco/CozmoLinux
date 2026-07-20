@@ -10,6 +10,12 @@ from unittest.mock import patch
 from cozmo_companion.core import radio_keepalive as rk
 
 
+def test_keepalive_desativado_por_padrao():
+    with patch.dict("os.environ", {}, clear=True):
+        assert rk.keepalive_ativo() is False
+        assert rk.iniciar_keepalive_radio() is False
+
+
 def test_keepalive_desativado_por_env():
     with patch.dict("os.environ", {"COZMO_RADIO_KEEPALIVE": "0"}, clear=False):
         assert rk.keepalive_ativo() is False
@@ -33,6 +39,7 @@ def test_keepalive_envia_pacotes_e_para():
         "os.environ",
         {
             "COZMO_RADIO_KEEPALIVE": "1",
+            "COZMO_STABLE_RADIO_KEEPALIVE": "1",
             "COZMO_RADIO_KEEPALIVE_HZ": "100",
             "COZMO_RADIO_KEEPALIVE_PORT": "55001",
             "COZMO_IP": "172.31.1.1",

@@ -48,6 +48,25 @@ class TestHealth(unittest.TestCase):
             self.assertEqual(saude.sessao.linha, "health-json")
             self.assertTrue(saude.na_base)
 
+    def test_json_fresco_nao_pinga_robo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cozmo-saude.json"
+            path.write_text(
+                '{"ts":"' + datetime.now().isoformat(timespec="seconds")
+                + '","rx":500,"tx":80,"ratio_acum":0.16,'
+                '"bateria_v":4.2,"estado":"CONNECTED","rx_ok":true,'
+                '"preso_base":true}',
+                encoding="utf-8",
+            )
+            with (
+                patch("cozmo_companion.guardian.core.health.servico_ativo", return_value=True),
+                patch("cozmo_companion.guardian.core.health.ping_robo") as ping,
+            ):
+                saude = ler_json(path)
+            ping.assert_not_called()
+            assert saude is not None
+            self.assertTrue(saude.ping_ok)
+
     def test_json_invalido_retorna_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "cozmo-saude.json"
@@ -149,6 +168,19 @@ class TestManutencao(unittest.TestCase):
                 self.assertFalse(manter_logs(root, estado))
                 run.assert_not_called()
 
+    def test_trim_nao_roda_no_boot_grace(self) -> None:
+        from cozmo_companion.guardian.core.manutencao import manter_logs
+        from cozmo_companion.guardian.core.policy import EstadoGuardian
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "scripts").mkdir()
+            (root / "scripts" / "limpar-logs.sh").write_text("#!/bin/bash\nexit 0\n")
+            estado = EstadoGuardian()
+            with patch("subprocess.run") as run:
+                self.assertFalse(manter_logs(root, estado))
+                run.assert_not_called()
+
     def test_trim_executa_script(self) -> None:
         from cozmo_companion.guardian.core.manutencao import manter_logs
         from cozmo_companion.guardian.core.policy import EstadoGuardian
@@ -158,6 +190,7 @@ class TestManutencao(unittest.TestCase):
             (root / "scripts").mkdir()
             (root / "scripts" / "limpar-logs.sh").write_text("#!/bin/bash\necho ok\n")
             estado = EstadoGuardian()
+            estado.iniciado_em = time.monotonic() - 1000.0
             with patch("subprocess.run") as run:
                 from subprocess import CompletedProcess
 

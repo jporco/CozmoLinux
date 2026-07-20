@@ -4502,6 +4502,7 @@ def religar_oled_acordado_base(cli: "pycozmo.Client", *, forcar: bool = False) -
     try:
         _handshake_oled_base(cli)
         pulso_sync_base(cli)
+        time.sleep(float(os.environ.get("COZMO_BOOT_OLED_SETTLE_S", "0.35")))
     except Exception as exc:
         logger.warning("religar_oled_acordado: handshake %s", exc)
     if _base_oled_anim_loop_ativo():
@@ -4527,6 +4528,7 @@ def ligar_oled_base(cli: "pycozmo.Client", *, forcar: bool = False, preso_na_bas
 
     na_base_fisico = preso_na_base or em_base(cli)
     if na_base_fisico or base_oled_usa_charger(cli):
+        time.sleep(float(os.environ.get("COZMO_BOOT_OLED_SETTLE_S", "0.35")))
         modo_charger_oled(cli, forcar=forcar or na_base_fisico)
         if base_oled_usa_charger(cli) and _base_oled_anim_loop_ativo():
             _iniciar_clip_base_continuo(cli)

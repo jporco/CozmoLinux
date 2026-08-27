@@ -271,6 +271,28 @@ class TestCompanionBase(unittest.TestCase):
         self.assertFalse(ok)
         c._sessao_guard.tentar_reconectar.assert_called_once_with(forcar=True)
 
+    def test_stall_rx_reabre_udp_no_oled_estavel_quando_reset_liberado(self) -> None:
+        c = MagicMock(spec=Companion)
+        c._ultimo_reconnect_udp = 0.0
+        c._sessao_guard = MagicMock()
+        c._sessao_guard.tentar_reconectar.return_value = False
+        c._na_base_efetivo = MagicMock(return_value=True)
+        with patch(
+            "cozmo_companion.core.companion.permitir_reset_udp_cozmo01",
+            return_value=True,
+        ), patch.dict(
+            os.environ,
+            {"COZMO_BASE_STABLE_OLED": "1", "COZMO_BASE_STABLE_ALLOW_RESET": "1"},
+        ):
+            ok = Companion._reconectar_sessao_udp(
+                c,
+                silencioso=False,
+                forcado=True,
+                cozmo01=True,
+            )
+        self.assertFalse(ok)
+        c._sessao_guard.tentar_reconectar.assert_called_once_with(forcar=True)
+
     def test_tick_nao_reabre_udp_duas_vezes_apos_wifi(self) -> None:
         c = MagicMock(spec=Companion)
         c.cli = MagicMock()

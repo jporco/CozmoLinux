@@ -283,7 +283,7 @@ class TestRecuperadorCozmo01(unittest.TestCase):
     @patch("cozmo_companion.core.motor_cozmo.cortar_flood_udp_base")
     @patch("cozmo_companion.core.motor_cozmo.ping_sessao_base")
     @patch("cozmo_companion.core.motor_cozmo.pulso_sync_base")
-    def test_rota_ap_viva_adia_reset_rx_morto(self, *_mocks) -> None:
+    def test_rota_ap_viva_nao_adia_stall_tx_alto(self, *_mocks) -> None:
         rec = RecuperadorCozmo01()
         rec.cozmo01_falhas = 3
         rec.stall_consecutivo = 3
@@ -315,8 +315,8 @@ class TestRecuperadorCozmo01(unittest.TestCase):
                 reconnect_udp=reconnect,
                 recuperar_inplace=lambda: True,
             )
-        self.assertFalse(r.reset_udp)
-        reconnect.assert_not_called()
+        self.assertTrue(r.reset_udp)
+        reconnect.assert_called_once()
 
     @patch("cozmo_companion.core.cozmo01_recovery.cozmo_alcanavel", return_value=True)
     @patch("cozmo_companion.core.motor_cozmo.rx_morto_s", return_value=30.0)

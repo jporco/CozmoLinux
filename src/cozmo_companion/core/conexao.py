@@ -169,7 +169,12 @@ def cozmo_ssid_visivel(*, rescan: bool = False) -> bool:
     try:
         if rescan:
             global _ultimo_rescan_wifi
-            intervalo = float(os.environ.get("COZMO_WIFI_RESCAN_S", "600"))
+            nome_intervalo = (
+                "COZMO_WIFI_RESCAN_OFFLINE_S"
+                if not cozmo_rota_ap()
+                else "COZMO_WIFI_RESCAN_S"
+            )
+            intervalo = float(os.environ.get(nome_intervalo, "600"))
             if time.monotonic() - _ultimo_rescan_wifi >= intervalo:
                 _ultimo_rescan_wifi = time.monotonic()
                 subprocess.run(
@@ -242,22 +247,26 @@ def log_offline_quieto(msg: str = "Cozmo offline — aguardando (sem mexer Wi-Fi
 
 
 def aguardar_cozmo_online(timeout_s: float) -> bool:
-    """Espera ping com backoff — só tenta Wi-Fi se AP Cozmo visível."""
+    """Espera ping e tenta recuperar o AP durante toda a janela."""
     global _ultimo_wifi_tentativa
     fim = time.monotonic() + timeout_s
+    proxima_wifi = 0.0
+    retry_wifi = float(os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"))
     while time.monotonic() < fim:
         if cozmo_alcanavel():
             return True
+        agora = time.monotonic()
+        if agora >= proxima_wifi:
+            visivel = cozmo_ssid_visivel(rescan=True)
+            preso = wlan0_preso_cozmo()
+            if (visivel or preso) and pode_tentar_wifi(forcado=preso):
+                _ultimo_wifi_tentativa = agora
+                logger.info("Tentando recuperar Wi-Fi do Cozmo (AP offline).")
+                if reconectar_wifi(forcado=preso) and cozmo_alcanavel():
+                    return True
+            proxima_wifi = agora + max(5.0, retry_wifi)
         time.sleep(2.0)
-    visivel = cozmo_ssid_visivel(rescan=True)
-    if (visivel or wlan0_preso_cozmo() or not cozmo_rota_ap()) and pode_tentar_wifi(
-        forcado=not cozmo_rota_ap()
-    ):
-        _ultimo_wifi_tentativa = time.monotonic()
-        if reconectar_wifi(forcado=not cozmo_rota_ap()):
-            return cozmo_alcanavel()
-    else:
-        log_offline_quieto()
+    log_offline_quieto()
     return cozmo_alcanavel()
 
 
@@ -267,7 +276,10 @@ def reconectar_wifi(*, forcado: bool = False) -> bool:
         return True
 
     if wlan0_preso_cozmo():
-        liberar_wlan0_cozmo()
+        # Não derrube a interface: o NetworkManager interpreta isso como uma
+        # solicitação explícita do usuário e deixa o rádio desconectado quando
+        # o AP do Cozmo some. O script de conexão já faz uma ativação explícita
+        # do perfil quando o SSID voltar a aparecer.
         forcado = True
 
     if not pode_tentar_wifi(forcado=forcado):
@@ -512,6 +524,29 @@ def gravar_saude(cli, *, extra: dict | None = None) -> None:
         pass
 
 
+def gravar_saude_offline() -> None:
+    """Mantém o heartbeat honesto enquanto ainda não há sessão UDP."""
+    try:
+        path = health_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "rx": 0,
+            "tx": 0,
+            "ratio_acum": 0.0,
+            "bateria_v": 0.0,
+            "estado": "OFFLINE",
+            "fase": "offline",
+            "rx_ok": False,
+            "wifi_ok": False,
+        }
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
 def despertar_sessao_leve(cli, monitor: MonitorRx, medidor: MedidorUdp | None = None) -> None:
     """Religa olhos e reseta baseline RX — sem fechar UDP (não mostra COZMO 01)."""
     try:
@@ -658,6 +693,20 @@ class MonitorRx:
         dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
         tx_delta = tx - self._tx
         rx_parado_s = agora - self._rx_em
+
+        # Um contador RX acumulado grande não torna a sessão saudável. Antes,
+        # a razão histórica tx/rx podia ficar baixa para sempre e mascarava um
+        # AP ainda associado, mas sem ARP/UDP: o keeper continuava escrevendo
+        # na sessão morta por minutos. Um RX realmente parado sem alcance por
+        # esta janela encerra o fluxo visual e deixa a recuperação de Wi-Fi
+        # assumir. RX que volta passa no bloco inicial acima.
+        hard_dead_s = float(os.environ.get("COZMO_RX_HARD_DEAD_S", "20"))
+        if (
+            rx == self._rx
+            and rx_parado_s >= max(dead_s, hard_dead_s)
+            and not cozmo_alcanavel()
+        ):
+            return False
 
         if (
             ppclip

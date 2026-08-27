@@ -1195,6 +1195,25 @@ class TestOledAntiEstatico(unittest.TestCase):
         motor._oled_fase_aplicada = "verde"
         motor._oled_fase_observada = "verde"
 
+    def test_oled_fase_verde_restaura_ppclip_quando_keeper_verde_desligado(self) -> None:
+        cli = MagicMock()
+        motor._oled_fase_aplicada = "amarelo"
+        motor._oled_fase_observada = "verde"
+        motor._oled_fase_observada_desde = time.monotonic() - 60.0
+        with (
+            patch.dict(os.environ, {"COZMO_OLED_VERDE_KEEPER_HZ": "0"}),
+            patch.object(motor, "modo_sono_oled_ativo", return_value=False),
+            patch.object(motor, "_parar_display_keeper") as parar_keeper,
+            patch.object(
+                motor, "_garantir_base_oled_anim_loop", return_value=True
+            ) as iniciar_loop,
+        ):
+            self.assertTrue(motor.ajustar_oled_fase_link(cli, "verde"))
+        parar_keeper.assert_called_once()
+        iniciar_loop.assert_called_once_with(cli)
+        motor._oled_fase_aplicada = "verde"
+        motor._oled_fase_observada = "verde"
+
     def test_stable_keeper_base_usa_clip_oficial_default(self) -> None:
         cli = MagicMock()
         motor._charger_oled_nome = None

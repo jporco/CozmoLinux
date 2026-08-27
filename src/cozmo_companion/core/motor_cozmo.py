@@ -3300,6 +3300,16 @@ def modo_charger_oled(cli: "pycozmo.Client", *, forcar: bool = False) -> bool:
             return _replay_anim_charger(cli, grupo)
         return _tick_charger_oled(cli)
     if _charger_keeper_ativo and not forcar:
+        # O estado pode sobreviver a uma thread DisplayKeeper que morreu. Sem
+        # este teste o tick só renova o protocolo e a OLED fica no último
+        # frame (ou preta) até o watchdog mais lento rodar.
+        if not keeper_base_ativo():
+            with _charger_oled_lock:
+                grupo = _charger_oled_nome
+            if grupo and _iniciar_keeper_clip_oled_base(cli, grupo):
+                logger.warning("Base OLED: keeper reiniciado (%s)", grupo)
+                return True
+            return _semear_oled_charger(cli, grupo)
         return _tick_charger_oled(cli)
     _parar_display_keeper()
     ac = cli.anim_controller

@@ -142,6 +142,11 @@ class RecuperadorCozmo01:
         )
         max_stall_s = float(os.environ.get("COZMO01_STALL_MAX_S", "10"))
         emerg_min_s = float(os.environ.get("COZMO01_EMERG_MIN_S", "4"))
+        if emergencia and stall_s >= emerg_min_s:
+            reset_fails = min(
+                reset_fails,
+                max(1, int(os.environ.get("COZMO01_EMERG_RESET_FAILS", "1"))),
+            )
 
         # Throttle dos pulsos de recuperação: floodar ping/sync a cada tick afoga o
         # firmware e mantém o RX morto (captura tcpdump: 120 pkt/s sustentado). Um
@@ -177,7 +182,7 @@ class RecuperadorCozmo01:
         # preventivas) acima do teto → reset duro. Sem isso o flood fica preso minutos
         # quando uma preventiva "recupera" e zera os contadores a cada tick.
         teto_morto = float(os.environ.get("COZMO01_RX_DEAD_MAX_S", "12"))
-        if cozmo_rota_ap():
+        if cozmo_rota_ap() and not emergencia:
             teto_morto = max(
                 teto_morto,
                 float(os.environ.get("COZMO01_RX_DEAD_ROUTE_S", "20")),
@@ -240,7 +245,8 @@ class RecuperadorCozmo01:
                 )
                 return ResultadoRecuperacao(in_place=True)
             self.cozmo01_falhas += 1
-            return ResultadoRecuperacao()
+            if not emergencia or self.cozmo01_falhas < reset_fails:
+                return ResultadoRecuperacao()
 
         deve_reset = (
             pode_reset

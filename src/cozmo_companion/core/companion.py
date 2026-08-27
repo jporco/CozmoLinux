@@ -1134,8 +1134,6 @@ class Companion(CompanionVoz):
             from cozmo_companion.core.motor_cozmo import (
                 base_oled_stable_only,
                 ligar_oled_base,
-                rx_link_ok,
-                rx_morto_s,
             )
 
             if (
@@ -1146,25 +1144,6 @@ class Companion(CompanionVoz):
             ):
                 logger.warning(
                     "COZMO 01 — reset UDP bloqueado na base estável; mantendo sessão"
-                )
-                despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
-                try:
-                    ligar_oled_base(self.cli, forcar=True)
-                except Exception as exc:
-                    logger.debug("religar OLED procedural: %s", exc)
-                self._garantir_rosto_base()
-                return False
-
-            if (
-                na_base_agora
-                and not apos_wifi
-                and base_oled_stable_only()
-                and (rx_link_ok() or rx_morto_s() <= float(
-                os.environ.get("COZMO01_RESET_RX_DEAD_MIN_S", "30")
-                ))
-            ):
-                logger.warning(
-                    "COZMO 01 — reset UDP bloqueado (RX ainda recuperável)"
                 )
                 despertar_sessao_leve(self.cli, self._monitor_rx, self._gov._medidor)
                 try:
@@ -2182,7 +2161,11 @@ def executar(log_level: str = "INFO") -> int:
     except (OSError, ValueError):
         pass
 
-    from cozmo_companion.core.conexao import aguardar_cozmo_online, log_offline_quieto
+    from cozmo_companion.core.conexao import (
+        aguardar_cozmo_online,
+        gravar_saude_offline,
+        log_offline_quieto,
+    )
 
     nunca_desconectar = os.environ.get("COZMO_NEVER_DISCONNECT", "1") == "1"
     tentativas = 0
@@ -2200,6 +2183,7 @@ def executar(log_level: str = "INFO") -> int:
             log_offline_quieto(
                 f"Cozmo offline — aguardando {pausa:.0f}s (sem flood Wi-Fi)."
             )
+            gravar_saude_offline()
             aguardar_cozmo_online(pausa)
             continue
         try:

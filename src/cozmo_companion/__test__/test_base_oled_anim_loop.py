@@ -194,6 +194,28 @@ class TestBaseOledAnimLoop(unittest.TestCase):
             self.assertEqual(motor._passo_frames_keeper(6.0), 5)
             self.assertEqual(motor._passo_frames_keeper(30.0), 1)
 
+    def test_modo_charger_reinicia_keeper_morto(self) -> None:
+        """Estado ativo sem thread não pode deixar a OLED congelada."""
+        cli = MagicMock()
+        anterior = motor._charger_keeper_ativo
+        nome_anterior = motor._charger_oled_nome
+        motor._charger_keeper_ativo = True
+        motor._charger_oled_nome = "CodeLabBlink"
+        try:
+            with (
+                patch.object(motor, "base_oled_usa_charger", return_value=True),
+                patch.object(motor, "base_oled_carga_cheia_ativo", return_value=False),
+                patch.object(motor, "_charger_anim_base_ativa", return_value=False),
+                patch.object(motor, "_charger_stream_ativo", return_value=False),
+                patch.object(motor, "keeper_base_ativo", return_value=False),
+                patch.object(motor, "_iniciar_keeper_clip_oled_base", return_value=True) as iniciar,
+            ):
+                self.assertTrue(motor.modo_charger_oled(cli))
+            iniciar.assert_called_once_with(cli, "CodeLabBlink")
+        finally:
+            motor._charger_keeper_ativo = anterior
+            motor._charger_oled_nome = nome_anterior
+
     def test_pool_oled_filtra_frames_fracos(self) -> None:
         cli = MagicMock()
 

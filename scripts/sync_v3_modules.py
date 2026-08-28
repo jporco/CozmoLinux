@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Grava módulos v3.0.0 no disco real (/mnt/G)."""
+"""Grava módulos legados no disco real (/mnt/G)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +15,7 @@ def w(rel: str, content: str) -> None:
 
 
 def main() -> None:
-    w("__init__.py", '"""Cozmo companion — PC cérebro, Cozmo executor via fila serial."""\n\n__version__ = "3.0.0"\n')
+    w("__init__.py", '"""Cozmo companion — PC cérebro, Cozmo executor via fila serial."""\n\n__version__ = "3.1.0"\n')
     w("core/__init__.py", "")
     w(
         "display/__init__.py",

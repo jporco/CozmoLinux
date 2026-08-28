@@ -5,6 +5,27 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || true)"
+VERSION="${VERSION:-3.1.0}"
+
+case "${1:-}" in
+  -h|--help)
+    cat <<EOF
+CozmoLinux $VERSION — instalador completo para Arch Linux
+
+Uso: ./install.sh
+
+Instala dependências, ambiente Python, recursos Cozmo, modelo Vosk,
+configuração preservada e units systemd do usuário.
+EOF
+    exit 0
+    ;;
+  --version)
+    echo "$VERSION"
+    exit 0
+    ;;
+esac
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -30,6 +51,16 @@ if ! arch_based; then
 fi
 
 info "CozmoLinux install directory: $ROOT"
+info "CozmoLinux version: $VERSION"
+
+if ! command -v python3 >/dev/null 2>&1; then
+  fail "python3 is required."
+fi
+python3 - <<'PY'
+import sys
+if sys.version_info < (3, 11):
+    raise SystemExit("Python 3.11 or newer is required.")
+PY
 
 PACMAN_PKGS=(
   python
@@ -103,7 +134,7 @@ if [[ ! -f "$ROOT/assets/beep_notif.wav" ]]; then
     || warn "Could not generate beep_notif.wav — notification sound may use synthetic fallback."
 fi
 
-info "Installing systemd user units"
+info "Installing systemd user units (CozmoLinux $VERSION)"
 mkdir -p "$HOME/.config/systemd/user"
 for unit in cozmo-companion.service cozmo-guardian.service; do
   sed "s|@INSTALL_DIR@|$ROOT|g" "$ROOT/systemd/$unit" > "$HOME/.config/systemd/user/$unit"
@@ -116,6 +147,7 @@ PYTHONPATH=src .venv/bin/python -m pytest src/cozmo_companion -q --import-mode=i
 cat <<EOF
 
 ${GREEN}Installation complete.${NC}
+Version: $VERSION
 
 Next steps:
   1. Edit $ROOT/config.env

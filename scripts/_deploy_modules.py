@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy dos módulos v3.0.0 solicitados."""
+"""Deploy legado dos módulos do CozmoLinux."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "src" / "cozmo_companion"
@@ -8,7 +8,7 @@ MODULES: dict[str, str] = {}
 
 MODULES["__init__.py"] = '''"""Cozmo companion — PC cérebro, Cozmo executor via fila serial."""
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 '''
 
 MODULES["core/__init__.py"] = ""

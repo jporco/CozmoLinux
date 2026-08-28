@@ -1,5 +1,5 @@
 [Unit]
-Description=Cozmo companion (voice, charger base, notifications)
+Description=CozmoLinux 3.1.0 (official animation resources, base safety, voice)
 After=network-online.target sound.target graphical-session.target
 Wants=network-online.target graphical-session.target
 StartLimitIntervalSec=0

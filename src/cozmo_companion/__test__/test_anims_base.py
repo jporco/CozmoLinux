@@ -18,14 +18,14 @@ from cozmo_companion.core.anims import (
 
 
 class TestAnimsBase(unittest.TestCase):
-    def test_body_pause_bloqueado(self):
+    def test_body_pause_semantico_continua_bloqueado(self):
         disp = {
             "LookInPlaceForFacesBodyPause",
             "LookInPlaceForFacesHeadMovePause",
             "NeutralFace",
             "IdleOnCharger",
         }
-        pool = filtrar_na_base(GRUPOS_CURIOSO, disp)
+        pool = filtrar_na_base(("LookInPlaceForFacesBodyPause",) + GRUPOS_CURIOSO, disp)
         self.assertNotIn("LookInPlaceForFacesBodyPause", pool)
         self.assertIn("LookInPlaceForFacesHeadMovePause", pool)
 
@@ -46,16 +46,13 @@ class TestAnimsBase(unittest.TestCase):
         }
         pool = pool_variacao_oled_base(disp)
         self.assertIn("IdleOnCharger", pool)
-        self.assertIn("LookInPlaceForFacesHeadMovePause", pool)
-        self.assertNotIn("ReactToPokeReaction", pool)
-        self.assertNotIn("DriveStuckOffCharger", pool)
-        self.assertNotIn("DizzyReactionSoft", pool)
-        self.assertGreaterEqual(len(pool), 5)
+        self.assertNotIn("LookInPlaceForFacesHeadMovePause", pool)
+        self.assertEqual(pool, ("IdleOnCharger",))
         with patch.dict(os.environ, {"COZMO_BASE_POOL_SEGURO": "0"}):
             pool_largo = pool_variacao_oled_base(disp)
         self.assertIn("InteractWithFaceTrackingIdle", pool_largo)
 
-    def test_permitido_bloqueia_drive(self):
+    def test_selecao_bloqueia_somente_saida_e_locomocao(self):
         self.assertTrue(permitido_sem_rodas_na_base("IdleOnCharger"))
         self.assertTrue(permitido_sem_rodas_na_base("LookInPlaceForFacesHeadMovePause"))
         self.assertFalse(permitido_sem_rodas_na_base("DriveStuckOffCharger"))
@@ -72,15 +69,29 @@ class TestAnimsBase(unittest.TestCase):
         awake = filtrar_por_contexto(GRUPOS_CURIOSO, disp, ContextoAnim.BASE)
         self.assertNotIn("Sleeping", awake)
 
-    def test_escolher_na_base_sem_drive(self):
+    def test_escolher_na_base_deixa_o_patch_decidir_pelos_pacotes(self):
         disp = {
             "LookInPlaceForFacesBodyPause",
             "NeutralFace",
             "LookInPlaceForFacesHeadMovePause",
         }
-        nomes = {escolher(disp, GRUPOS_CURIOSO, na_base=True) for _ in range(30)}
+        nomes = {
+            escolher(
+                disp,
+                ("LookInPlaceForFacesBodyPause",) + GRUPOS_CURIOSO,
+                na_base=True,
+            )
+            for _ in range(30)
+        }
         self.assertNotIn("LookInPlaceForFacesBodyPause", nomes)
-        self.assertTrue(nomes <= {"NeutralFace", "LookInPlaceForFacesHeadMovePause"})
+        self.assertTrue(
+            nomes
+            <= {
+                "NeutralFace",
+                "LookInPlaceForFacesHeadMovePause",
+                "LookInPlaceForFacesBodyPause",
+            }
+        )
 
 
 if __name__ == "__main__":

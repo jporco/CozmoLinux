@@ -91,6 +91,17 @@ _SEGUROS_NA_BASE = frozenset(
         "LookInPlaceForFacesHeadMovePause",
         "InteractWithFaceTrackingIdle",
         "ReactToPokeReaction",
+        "ReactToPokeStartled",
+        "ReactToUnexpectedMovement",
+        "ReactToImpact",
+        "ReactToCliff",
+        "ReactToCliffDetectorStop",
+        "ReactToPickup",
+        "DizzyShakeLoop",
+        "DizzyShakeStop",
+        "DizzyReactionSoft",
+        "DizzyReactionMedium",
+        "DizzyReactionHard",
         "NeutralFace",
         "InterestedFace",
         "CodeLabHiccup",
@@ -510,8 +521,12 @@ def _proibido_na_base(nome: str) -> bool:
 
 
 def permitido_sem_rodas_na_base(nome: str) -> bool:
-    """Na base: permite clips de olhos/carga; bloqueia só drive/saída da base."""
-    if nome in _PROIBIDOS_RODAS_NA_BASE:
+    """Permite reações, bloqueando somente grupos de locomoção/saída.
+
+    A trava física definitiva continua em ``anim_base_patch``: keyframes e
+    pacotes de roda, corpo e elevador são removidos antes de cada envio.
+    """
+    if not nome or not nome.strip():
         return False
     if nome in _SEGUROS_NA_BASE:
         return True
@@ -519,10 +534,7 @@ def permitido_sem_rodas_na_base(nome: str) -> bool:
 
 
 def permitido_anim_normal_base(nome: str) -> bool:
-    """Olhos/cabeça na base — sem rodas e sem toque/susto (mãozinha)."""
-    if not permitido_sem_rodas_na_base(nome):
-        return False
-    return not any(m in nome for m in _MARCADORES_BLOQUEIO_TOQUE)
+    return permitido_sem_rodas_na_base(nome)
 
 
 def _eh_clip_olhos_oled(nome: str) -> bool:
@@ -578,19 +590,20 @@ def pool_variacao_oled_base(
     disponiveis: set[str],
     cli: "pycozmo.Client | None" = None,
 ) -> tuple[str, ...]:
-    """Pool para variar na base — seguro na dock ou lista ampla."""
+    """Pool para variar na base, priorizando o repertório do app oficial."""
     del cli
     seguro = os.environ.get("COZMO_BASE_POOL_SEGURO", "1") == "1"
     fonte = GRUPOS_BASE_OLED_SEGUROS if seguro else GRUPOS_BASE_OLED_VARIAR
+    if os.environ.get("COZMO_ORIGINAL_APP_ENGINE", "1") == "1":
+        from cozmo_companion.core.original_app import grupos_ambientais_oficiais
+
+        oficiais = grupos_ambientais_oficiais(disponiveis)
+        if oficiais:
+            fonte = oficiais
     vistos: set[str] = set()
     out: list[str] = []
     for g in fonte:
-        if (
-            g in disponiveis
-            and g not in GRUPOS_BASE_OLED_VARIAR_BLOQUEIO
-            and permitido_anim_normal_base(g)
-            and g not in vistos
-        ):
+        if g in disponiveis and permitido_anim_normal_base(g) and g not in vistos:
             out.append(g)
             vistos.add(g)
     if not seguro:

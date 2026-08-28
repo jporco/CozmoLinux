@@ -17,7 +17,7 @@ class TestAnimationDirector(unittest.TestCase):
             "Hiccup",
         }
         pool = AnimationDirector().pool(disp, ContextoAnim.BASE, AnimIntent.NOTIFICATION)
-        self.assertIn("InterestedFace", pool)
+        self.assertIn("CodeLabBlink", pool)
         self.assertNotIn("DriveOffCharger", pool)
 
     def test_rosto_visto_tem_curiosos(self) -> None:

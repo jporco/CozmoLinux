@@ -19,6 +19,7 @@ from cozmo_companion.core.anims import (
     filtrar_por_contexto,
     pool_variacao_oled_base,
 )
+from cozmo_companion.core.original_app import grupos_oficiais, grupos_reacao_oficiais
 
 
 class AnimIntent(str, Enum):
@@ -46,6 +47,20 @@ class AnimationDirector:
         ctx: ContextoAnim,
         intent: AnimIntent,
     ) -> tuple[str, ...]:
+        # O aplicativo oficial é a fonte primária de intenção → grupo. As
+        # listas abaixo são apenas fallback para instalação sem os resources.
+        oficiais = grupos_reacao_oficiais(intent.value, disponiveis)
+        if not oficiais:
+            oficiais = grupos_oficiais(intent.value, disponiveis)
+        if oficiais:
+            pool_oficial = filtrar_por_contexto(
+                oficiais,
+                disponiveis,
+                ctx,
+                sem_som_carga=ctx == ContextoAnim.BASE,
+            )
+            if pool_oficial:
+                return pool_oficial
         if intent == AnimIntent.SLEEP:
             candidatos = GRUPOS_SONO
         elif intent == AnimIntent.FACE_SEEN:

@@ -637,7 +637,7 @@ class TestMotorCozmo(unittest.TestCase):
         ac.enable_animations.assert_called_with(False)
         cli.play_anim_group.assert_not_called()
 
-    def test_animar_base_bloqueada_modo_direto(self) -> None:
+    def test_animar_base_modo_direto_bloqueia_saida(self) -> None:
         cli = MagicMock()
         with patch.dict("os.environ", {"COZMO_BASE_OLED_MODE": "direct"}):
             self.assertFalse(

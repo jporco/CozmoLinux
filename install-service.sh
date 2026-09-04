@@ -25,10 +25,12 @@ loginctl enable-linger "$USER" 2>/dev/null || true
 
 systemctl --user daemon-reload
 systemctl --user enable --now cozmo-companion.service
+systemctl --user enable --now cozmo-guardian.service
 
 echo ""
 echo "Serviço CozmoLinux ativo."
 echo "  versão: $(tr -d '[:space:]' < "$ROOT/VERSION")"
 echo "  status: systemctl --user status cozmo-companion"
+echo "  guardian: systemctl --user status cozmo-guardian"
 echo "  log:    tail -f $ROOT/cozmo-companheiro.log"
 echo "  parar:  systemctl --user stop cozmo-companion"

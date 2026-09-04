@@ -288,6 +288,46 @@ class TestPolicy(unittest.TestCase):
             acao = decidir(saude, estado, root=Path("/tmp"))
         self.assertEqual(acao, AcaoGuardian.WIFI_APENAS)
 
+
+class TestActions(unittest.TestCase):
+    def test_restart_forcado_nao_confunde_lock_do_systemd_com_manual(self) -> None:
+        """O lock do companion também existe no unit systemd."""
+        from subprocess import CompletedProcess
+
+        from cozmo_companion.guardian.core.actions import reiniciar_companion
+
+        with (
+            patch(
+                "cozmo_companion.guardian.core.health.companion_via_lock",
+                return_value=True,
+            ),
+            patch("cozmo_companion.guardian.core.actions.subprocess.run") as run,
+        ):
+            run.side_effect = [
+                CompletedProcess(["systemctl"], 0, stdout="active\n", stderr=""),
+                CompletedProcess(["systemctl"], 0, stdout="", stderr=""),
+            ]
+            self.assertTrue(reiniciar_companion(forcar=True))
+            self.assertEqual(run.call_args_list[1].args[0][2], "restart")
+
+    def test_start_parado_respeita_lock_manual(self) -> None:
+        from subprocess import CompletedProcess
+
+        from cozmo_companion.guardian.core.actions import reiniciar_companion
+
+        with (
+            patch(
+                "cozmo_companion.guardian.core.health.companion_via_lock",
+                return_value=True,
+            ),
+            patch("cozmo_companion.guardian.core.actions.subprocess.run") as run,
+        ):
+            run.return_value = CompletedProcess(
+                ["systemctl"], 3, stdout="inactive\n", stderr=""
+            )
+            self.assertFalse(reiniciar_companion())
+            self.assertEqual(run.call_count, 1)
+
     def test_wifi_offline_nao_mexe_rede(self) -> None:
         estado = EstadoGuardian()
         saude = Saude(True, False, None, 0, None, None, None)

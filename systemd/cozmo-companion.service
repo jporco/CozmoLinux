@@ -1,7 +1,7 @@
 [Unit]
-Description=CozmoLinux 3.1.0 (official animation resources, base safety, voice)
-After=network-online.target sound.target graphical-session.target
-Wants=network-online.target graphical-session.target
+Description=Cozmo companheiro (voz, conversa, carga na base)
+After=network-online.target sound.target plasma-workspace.target
+Wants=network-online.target
 StartLimitIntervalSec=0
 
 [Service]
@@ -10,6 +10,7 @@ Nice=19
 CPUWeight=10
 IOWeight=10
 TimeoutStopSec=5
+KillMode=mixed
 TimeoutStartSec=120
 WorkingDirectory=@INSTALL_DIR@
 Environment=PYTHONPATH=@INSTALL_DIR@/src
@@ -19,11 +20,13 @@ Environment=XDG_RUNTIME_DIR=/run/user/%U
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 EnvironmentFile=-@INSTALL_DIR@/config.env
 EnvironmentFile=-@INSTALL_DIR@/config.guardian.env
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 120); do pgrep -x plasmashell >/dev/null && exit 0; sleep 1; done; exit 1'
 ExecStartPre=/bin/bash -c 'ping -c1 -W2 172.31.1.1 >/dev/null || COZMO_WIFI_SAFE=1 timeout 8 @INSTALL_DIR@/conectar-cozmo.sh || true'
 ExecStart=@INSTALL_DIR@/scripts/cozmo-service-start.sh
-Restart=no
+Restart=on-failure
+RestartSec=90
 StandardOutput=append:@INSTALL_DIR@/cozmo-companion.log
 StandardError=append:@INSTALL_DIR@/cozmo-companion.log
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

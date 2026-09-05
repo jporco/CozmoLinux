@@ -22,3 +22,4 @@ StandardError=append:@INSTALL_DIR@/guardian.log
 
 [Install]
 WantedBy=graphical-session.target
+WantedBy=default.target

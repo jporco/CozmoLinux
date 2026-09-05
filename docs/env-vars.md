@@ -218,8 +218,8 @@ Arquivo gerado por `scripts/generate-env-map.py`.
 | `COZMO_OBST_FRAME_S` | `'0.15'` | `src/cozmo_companion/core/face_watch.py:56` |
 | `COZMO_OBST_STRIP_FRAC` | `'0.35'` | `src/cozmo_companion/core/face_watch.py:53` |
 | `COZMO_OBST_VALID_S` | `'0.6'` | `src/cozmo_companion/core/face_watch.py:55` |
-| `COZMO_OFFLINE_BACKOFF_MAX_S` | `'600'` | `src/cozmo_companion/core/companion.py:2174` |
-| `COZMO_OFFLINE_BACKOFF_S` | `'120'` | `src/cozmo_companion/core/companion.py:2173` |
+| `COZMO_OFFLINE_BACKOFF_MAX_S` | `'60'` | `src/cozmo_companion/core/companion.py:2174` |
+| `COZMO_OFFLINE_BACKOFF_S` | `'15'` | `src/cozmo_companion/core/companion.py:2173` |
 | `COZMO_OFFLINE_LOG_S` | `'300'` | `src/cozmo_companion/core/conexao.py:242` |
 | `COZMO_OFFLINE_QUIET_S` | `'45'` | `src/cozmo_companion/core/companion.py:1478` |
 | `COZMO_OLED_BURST_FRAMES` | `'4'` | `src/cozmo_companion/core/motor_cozmo.py:4795` |

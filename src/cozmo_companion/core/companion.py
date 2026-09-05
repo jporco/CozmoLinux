@@ -2170,8 +2170,8 @@ def executar(log_level: str = "INFO") -> int:
     nunca_desconectar = os.environ.get("COZMO_NEVER_DISCONNECT", "1") == "1"
     tentativas = 0
     tentativas_offline = 0
-    backoff_base = float(os.environ.get("COZMO_OFFLINE_BACKOFF_S", "120"))
-    backoff_max = float(os.environ.get("COZMO_OFFLINE_BACKOFF_MAX_S", "600"))
+    backoff_base = float(os.environ.get("COZMO_OFFLINE_BACKOFF_S", "15"))
+    backoff_max = float(os.environ.get("COZMO_OFFLINE_BACKOFF_MAX_S", "60"))
     cli = None
     while cli is None:
         if not cozmo_alcanavel():

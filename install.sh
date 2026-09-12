@@ -167,7 +167,7 @@ Next steps:
      systemctl --user enable --now cozmo-companion.service
      systemctl --user enable --now cozmo-guardian.service
 
-  Volume CLI: cozmo | cozmo + | cozmo -
+  Volume/recovery CLI: cozmo | cozmo + | cozmo - | cozmo reboot
   Logs: $ROOT/cozmo-companheiro.log
 
 EOF

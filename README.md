@@ -77,6 +77,7 @@ journalctl --user -u cozmo-companion.service -f
 cozmo      # show volume
 cozmo +    # louder
 cozmo -    # quieter
+cozmo reboot  # restart session and wait for reconnection
 ```
 
 ## Features
@@ -186,6 +187,7 @@ Edite `config.env` e defina **`COZMO_WIFI_SENHA`** (senha na etiqueta Wi-Fi do C
 PYTHONPATH=src .venv/bin/python -m cozmo_companion   # foreground
 systemctl --user enable --now cozmo-companion.service   # serviço
 cozmo +                                # volume
+cozmo reboot                           # reiniciar sessão e aguardar conexão
 ```
 
 ## Recursos

@@ -68,7 +68,7 @@ PACMAN_PKGS=(
   networkmanager
   espeak-ng
   pipewire
-  pipewire-pulseaudio
+  pipewire-pulse
   portaudio
   unzip
   curl

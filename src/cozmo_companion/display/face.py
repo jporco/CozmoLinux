@@ -8,7 +8,6 @@ Com procedural ativo, desligar antes de texto estático e religar ao terminar.
 from __future__ import annotations
 
 import os
-import re
 import time
 from functools import lru_cache
 from typing import TYPE_CHECKING
@@ -136,8 +135,6 @@ class Tela:
 
     def _enviar_pkt(self, pkt: protocol_encoder.DisplayImage, *, direct: bool) -> None:
         """Fila do AnimationController — evita briga com procedural a 30 fps."""
-        from cozmo_companion.core.motor_cozmo import base_oled_modo_proc
-
         from cozmo_companion.core.motor_cozmo import base_oled_usa_pulse
 
         if base_oled_usa_pulse(self.cli) and not self._proc_pausado:

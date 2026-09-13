@@ -60,13 +60,10 @@ def perfil_normal(root: Path) -> None:
         logger.info("Override guardian removido — perfil normal")
 
 
-def reiniciar_companion() -> bool:
-    """Só `start` se inativo — nunca `restart` (mata sessão UDP do Cozmo)."""
+def reiniciar_companion(*, forcar: bool = False) -> bool:
+    """Inicia serviço morto; reinicia ativo somente com saúde estagnada."""
     from cozmo_companion.guardian.core.health import companion_via_lock
 
-    if companion_via_lock():
-        logger.info("Companion manual ativo (lock) — ignorando start systemd")
-        return False
     try:
         st = subprocess.run(
             ["systemctl", "--user", "is-active", SERVICE],
@@ -76,7 +73,21 @@ def reiniciar_companion() -> bool:
         )
         estado_svc = st.stdout.strip()
         if estado_svc in ("active", "activating", "reloading"):
+            if forcar:
+                subprocess.run(
+                    ["systemctl", "--user", "restart", SERVICE],
+                    check=True,
+                    timeout=45,
+                )
+                logger.warning("Companion reiniciado pelo guardian (saúde estagnada)")
+                return True
             logger.info("Companion já %s — ignorando start", estado_svc)
+            return False
+        # O lock também é criado pelo serviço systemd. Só o respeitamos
+        # quando o unit está parado: nesse caso ele representa uma instância
+        # manual válida e iniciar outra duplicaria a sessão UDP.
+        if companion_via_lock():
+            logger.info("Companion manual ativo (lock) — ignorando start systemd")
             return False
         subprocess.run(
             ["systemctl", "--user", "start", SERVICE],

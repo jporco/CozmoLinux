@@ -16,3 +16,17 @@ def install_root() -> Path:
 
 def data_dir() -> Path:
     return install_root() / "data"
+
+
+def health_file(root: Path | None = None) -> Path:
+    """Heartbeat fora do repositório quando configurado.
+
+    O projeto pode estar em NTFS, onde um arquivo/rename corrompido não deve
+    desativar silenciosamente o watchdog. ``expanduser`` permite usar ``~`` no
+    EnvironmentFile do systemd sem depender de expansão pelo shell.
+    """
+    raw = os.environ.get("COZMO_HEALTH_FILE", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    base = root / "data" if root is not None else data_dir()
+    return base / "cozmo-saude.json"

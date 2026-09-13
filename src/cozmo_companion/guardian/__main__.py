@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from cozmo_companion.guardian.core.health import ler_log
+from cozmo_companion.guardian.core.health import ler_saude
 from cozmo_companion.guardian.core.manutencao import manter_logs
 from cozmo_companion.guardian.core.policy import EstadoGuardian, decidir, executar
 
@@ -74,7 +74,7 @@ def main() -> int:
 
     while True:
         try:
-            saude = ler_log(log_path)
+            saude = ler_saude(root, log_path)
             acao = decidir(saude, estado, root=root)
             s = saude.sessao
             if s:

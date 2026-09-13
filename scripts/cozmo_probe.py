@@ -60,13 +60,29 @@ def main() -> int:
     from pycozmo import client as cozmo_client
 
     print("Conectando (probe read-only)...")
-    cli = cozmo_client.Client(enable_procedural_face=True)
-    try:
-        cli.start()
-        cli.connect()
-        cli.wait_for_robot(timeout=25)
-    except Exception as exc:
-        print(f"FAIL connect: {exc}")
+    cli = None
+    ultimo_erro: Exception | None = None
+    tentativas = int(os.environ.get("COZMO_PROBE_CONNECT_TRIES", "3"))
+    for tentativa in range(1, max(1, tentativas) + 1):
+        cli = cozmo_client.Client(enable_procedural_face=True)
+        try:
+            cli.start()
+            cli.connect()
+            cli.wait_for_robot(timeout=30)
+            break
+        except Exception as exc:
+            ultimo_erro = exc
+            try:
+                cli.disconnect()
+                cli.stop()
+            except Exception:
+                pass
+            cli = None
+            if tentativa < tentativas:
+                print(f"connect tentativa {tentativa} falhou: {exc}; retry...")
+                time.sleep(float(os.environ.get("COZMO_PROBE_RETRY_S", "3")))
+    if cli is None:
+        print(f"FAIL connect: {ultimo_erro}")
         return 2
 
     rx = MonitorRx()

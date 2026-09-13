@@ -24,7 +24,7 @@ from cozmo_companion.voice.mic import (
     resolver_dispositivo,
 )
 from cozmo_companion.voice.normalizar import normalizar_vosk
-from cozmo_companion.voice.wake import contem_wake, parcial_wake_pronto
+from cozmo_companion.voice.wake import parcial_wake_pronto
 
 logger = logging.getLogger("cozmo.stt")
 
@@ -210,7 +210,6 @@ class Ouvinte:
                 self._emitir("barulho", nivel)
 
     def _capturar_sessao(self) -> None:
-        retry_s = float(os.environ.get("STT_MIC_RETRY_S", "2.5"))
         try:
             ativar_fonte()
         except Exception:

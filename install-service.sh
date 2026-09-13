@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# Habilita o Cozmo companheiro no boot (systemd user + linger).
+# Habilita o CozmoLinux no login (systemd user + linger).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-"$ROOT/setup.sh"
-
-# Para processo manual antigo
-pkill -f "python.*companheiro.py" 2>/dev/null || true
-pkill -f "python -m cozmo_companion" 2>/dev/null || true
+"$ROOT/install.sh"
 
 mkdir -p "$HOME/.config/systemd/user"
-cp "$ROOT/systemd/cozmo-companion.service" "$HOME/.config/systemd/user/"
-
-# Wi-Fi do Cozmo reconecta sozinho
-nmcli connection modify Cozmo_31CE41 connection.autoconnect yes 2>/dev/null || true
+for unit in cozmo-companion.service cozmo-guardian.service; do
+  sed "s|@INSTALL_DIR@|$ROOT|g" "$ROOT/systemd/$unit" \
+    > "$HOME/.config/systemd/user/$unit"
+done
 
 # Ollama para conversa inteligente (opcional)
 if systemctl list-unit-files ollama.service &>/dev/null; then
@@ -29,9 +25,12 @@ loginctl enable-linger "$USER" 2>/dev/null || true
 
 systemctl --user daemon-reload
 systemctl --user enable --now cozmo-companion.service
+systemctl --user enable --now cozmo-guardian.service
 
 echo ""
-echo "Serviço cozmo-companion ativo."
+echo "Serviço CozmoLinux ativo."
+echo "  versão: $(tr -d '[:space:]' < "$ROOT/VERSION")"
 echo "  status: systemctl --user status cozmo-companion"
+echo "  guardian: systemctl --user status cozmo-guardian"
 echo "  log:    tail -f $ROOT/cozmo-companheiro.log"
 echo "  parar:  systemctl --user stop cozmo-companion"

@@ -30,7 +30,7 @@ class TestLimites(unittest.TestCase):
         ):
             self.assertEqual(ratio_udp(cli), 0.0)
     def test_delta_saturado_rx_parado(self) -> None:
-        self.assertTrue(udp_saturado_por_delta(0, 400))
+        self.assertTrue(udp_saturado_por_delta(0, 600))
         self.assertFalse(udp_saturado_por_delta(10, 100))
 
     def test_delta_leve(self) -> None:

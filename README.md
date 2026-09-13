@@ -1,6 +1,8 @@
-# CozmoLinux
+# CozmoLinux 3.1.0
 
-Run an **Anki Cozmo** robot from a Linux PC — no phone required. CozmoLinux connects over Wi-Fi, keeps the robot on the charger, shows notifications on the OLED, plays short beeps on Cozmo's speaker, and supports voice wake word + optional local LLM chat (Ollama).
+Run an **Anki Cozmo** robot from a Linux PC — no phone required. CozmoLinux 3.1.0 connects over Wi-Fi, keeps the robot on the charger, uses the original Cozmo animation/behavior resources, reacts to face, sound, touch and motion, shows notifications on the OLED, and supports voice wake word + optional local LLM chat (Ollama).
+
+This release is focused on a reliable base mode: the original animation clips are sanitized before transmission so wheels, lift and body motion cannot be sent while docked. The free mode keeps the normal Cozmo behavior path.
 
 > **Arch Linux only** — this project is developed and tested on **Arch-based** distributions: Arch Linux, CachyOS, Manjaro, EndeavourOS, Garuda, Artix, and similar (`ID=arch` or `ID_LIKE=arch` in `/etc/os-release`). Other distros are not supported by the installer.
 
@@ -25,6 +27,8 @@ cd CozmoLinux
 chmod +x install.sh
 ./install.sh
 ```
+
+To install and enable both user services in one step, run `./install-service.sh` after configuring `config.env`.
 
 Then edit `config.env` and set **`COZMO_WIFI_SENHA`** to the password printed on Cozmo's Wi-Fi label (or under the robot).
 
@@ -73,12 +77,16 @@ journalctl --user -u cozmo-companion.service -f
 cozmo      # show volume
 cozmo +    # louder
 cozmo -    # quieter
+cozmo reboot  # restart session and wait for reconnection
 ```
 
 ## Features
 
 - **No phone** — direct UDP via [pycozmo](https://github.com/zaydman/pycozmo)
-- **Charger / base mode** — wheels disabled while docked; head button toggles base vs free intent
+- **Official behavior resources** — reactions are resolved from the installed `AnimationTriggerMap` and behavior trigger map
+- **Charger / base mode** — wheels, lift and body motion disabled while docked; head button toggles base vs free intent
+- **Dynamic OLED** — original clip variants are selected with anti-repeat and light-aware timing; the OLED is kept visible
+- **Sensor reactions** — face/camera, sound, touch on the head, pickup, shake, impact and charger events
 - **KDE notifications** — short beep + app name on OLED (no PC speaker by default)
 - **Voice** — wake word + Vosk STT (Portuguese model installed by `install.sh`)
 - **Stability** — UDP governor, COZMO 01 recovery, guardian watchdog
@@ -127,9 +135,11 @@ MIT — see [LICENSE](LICENSE). Not affiliated with Anki or Digital Dream Labs.
 
 ## Português (Brasil)
 
-# CozmoLinux
+# CozmoLinux 3.1.0
 
-Controle um **Anki Cozmo** pelo Linux — **sem celular**. O CozmoLinux conecta via Wi-Fi, mantém o robô na base carregando, mostra notificações no OLED, toca bips curtos no **alto-falante do Cozmo** e aceita palavra de ativação + chat opcional com LLM local (Ollama).
+Controle um **Anki Cozmo** pelo Linux — **sem celular**. O CozmoLinux 3.1.0 conecta via Wi-Fi, mantém o robô na base carregando, usa os recursos originais de animação/comportamento do Cozmo, reage a câmera, som, toque e movimento, mostra notificações no OLED, toca bips curtos no **alto-falante do Cozmo** e aceita palavra de ativação + chat opcional com LLM local (Ollama).
+
+No modo base, os clips originais são sanitizados antes do envio: rodas, elevador e movimento do corpo nunca são transmitidos enquanto o robô está encaixado. No modo livre, o fluxo normal do Cozmo permanece disponível.
 
 > **Somente Arch Linux** — projeto feito para distros **baseadas em Arch**: Arch Linux, CachyOS, Manjaro, EndeavourOS, Garuda, Artix etc. (`ID=arch` ou `ID_LIKE=arch` em `/etc/os-release`). O instalador **não** suporta Ubuntu, Fedora ou Debian.
 
@@ -154,6 +164,8 @@ chmod +x install.sh
 ./install.sh
 ```
 
+Para instalar e habilitar os dois serviços do usuário de uma vez, use `./install-service.sh` depois de configurar o `config.env`.
+
 Edite `config.env` e defina **`COZMO_WIFI_SENHA`** (senha na etiqueta Wi-Fi do Cozmo).
 
 ## Configuração
@@ -175,12 +187,16 @@ Edite `config.env` e defina **`COZMO_WIFI_SENHA`** (senha na etiqueta Wi-Fi do C
 PYTHONPATH=src .venv/bin/python -m cozmo_companion   # foreground
 systemctl --user enable --now cozmo-companion.service   # serviço
 cozmo +                                # volume
+cozmo reboot                           # reiniciar sessão e aguardar conexão
 ```
 
 ## Recursos
 
-- Sem celular (pycozmo / UDP)
-- Modo base (sem rodas na base) e modo livre (fora da base)
+- Sem celular (UDP)
+- Recursos originais do app: `AnimationTriggerMap` + mapa de reações do behavior system
+- Modo base (sem rodas, elevador ou corpo na base) e modo livre (fora da base)
+- OLED dinâmico com variações dos clips originais, anti-repetição e reação à luz
+- Reações a rosto/câmera, som, toque na cabeça, levantar, sacudir, impacto e carregador
 - Notificações KDE → OLED + bip no Cozmo
 - Voz em português (modelo Vosk instalado pelo `install.sh`)
 - Recuperação COZMO 01 e guardian de estabilidade

@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from cozmo_companion.core import hora
+from cozmo_companion.core.animation_director import AnimIntent
 from cozmo_companion.core.charger import carregando
 from cozmo_companion.core.conexao import conexao_ok
 from cozmo_companion.core.limites import limites
@@ -109,6 +110,7 @@ class CompanionVoz:
         self._stt_base_wake_ate = 0.0
         self._ultimo_barulho = 0.0
         self._ultimo_latido = 0.0
+        self._ultima_reacao_fala = 0.0
         self._espontaneo = FalaEspontanea()
         self.ouvinte: Ouvinte | None = None
         self._ouvinte_notif: OuvinteNotificacoes | None = None
@@ -461,6 +463,18 @@ class CompanionVoz:
         self._abrir_janela_stt_base()
         self._vida.acordar_para_voz(self.cli)
         logger.info("Wake acordou")
+        if (
+            self._na_base_efetivo()
+            and os.environ.get("WAKE_BASE_VISUAL_ONLY", "1") == "1"
+        ):
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("wake", frames=5)
+            # Dizer apenas "Cozmo" não deve somar TTS ao stream OLED. Essa
+            # sobreposição enche o UDP do firmware e termina em COZMO 01.
+            self._fila.enviar_anim(REACOES_WAKE, prioridade=False)
+            logger.info("Wake na base — reação somente visual")
+            return
         na_carga = self._na_base_efetivo() and carregando(self.cli)
         if na_carga and os.environ.get("WAKE_NA_BASE_RELAX", "1") != "1":
             return
@@ -532,8 +546,13 @@ class CompanionVoz:
             if os.environ.get("DORMIR_VOZ_SEM_LLM", "1") == "1":
                 logger.info("Dormir imediato (voz): %s", t[:24])
                 return
-        if comando_util(t) and self._na_base_efetivo() and self._responder_util_tela(t):
-            return
+        if comando_util(t) and self._na_base_efetivo():
+            util_cooldown = float(os.environ.get("UTIL_VOZ_COOLDOWN_S", "12"))
+            if agora - self._ultimo_util_tela < util_cooldown:
+                logger.info("Util repetido/eco ignorado: %s", t[:30])
+                return
+            if self._responder_util_tela(t):
+                return
         self.usuario_q.put(texto)
 
     def _processar_stt(self) -> None:
@@ -626,13 +645,23 @@ class CompanionVoz:
         self._vida.registrar_interacao(
             20.0, cli=self.cli, motivo="barulho", preso_na_base=self._base.preso_na_base
         )
-        grupos = REACOES_BARULHO if self._na_base_efetivo() else REACOES_BARULHO_LIVRE
-        self._pedir_fala_espontanea(
-            random.choice(("opa", "ei", "calma")),
-            tela=None,
-            grupos=grupos,
-            prioridade=True,
+        pool = self._anim_director.pool(
+            set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
         )
+        if pool:
+            self._fila.enviar_anim(pool, prioridade=False)
+        # "Repete" o barulho com um bipe curto do próprio alto-falante do Cozmo
+        # (sem TTS/fala e sem depender do microfone do PC para o retorno) —
+        # mais intenso quanto mais alto veio o som, tipo a florzinha que reage
+        # a grito.
+        limiar_intenso = float(os.environ.get("BARULHO_INTENSO_RMS", "2600"))
+        tipo_som = "susto" if nivel >= limiar_intenso else "curioso"
+        if self._na_base_efetivo():
+            from cozmo_companion.display.rosto import solicitar_reacao_visual
+
+            solicitar_reacao_visual("sound", frames=5)
+        self._tocar_som_reacao(tipo_som)
+        logger.info("Barulho na base" if self._na_base_efetivo() else "Barulho livre")
 
     def _reagir_latido(self, texto: str = "") -> None:
         agora = time.monotonic()
@@ -645,6 +674,14 @@ class CompanionVoz:
             18.0, cli=self.cli, motivo="latido", preso_na_base=self._base.preso_na_base
         )
         grupos = REACOES_LATIDO if self._na_base_efetivo() else REACOES_LATIDO_LIVRE
+        if self._na_base_efetivo():
+            pool = self._anim_director.pool(
+                set(self.cli.animation_groups.keys()), self._ctx_anim(), AnimIntent.SOUND
+            )
+            if pool:
+                self._fila.enviar_anim(pool, prioridade=False)
+            logger.info("Latido na base — reação leve serializada")
+            return
         self._pedir_fala_espontanea("au au", tela=None, grupos=grupos, prioridade=True)
 
     def _tratar_som_ouvido(self, tipo: str, valor: str | float) -> None:
@@ -658,6 +695,28 @@ class CompanionVoz:
             self._reagir_latido(str(valor))
 
     def _tratar_texto_ouvido(self, texto: str) -> None:
+        if (
+            self._na_base_efetivo()
+            and os.environ.get("BASE_VOICE_REACTIONS_ONLY", "1") == "1"
+        ):
+            self._wake.encerrar_espera()
+            agora = time.monotonic()
+            cooldown = float(os.environ.get("BASE_VOICE_REACTION_COOLDOWN_S", "4"))
+            if (
+                agora - self._ultima_reacao_fala >= cooldown
+                and self._fila.livre
+                and not self._periodo_quieto_ativo()
+                and getattr(getattr(self, "_gov", None), "ultimo_rx_ok", True)
+            ):
+                pool = self._anim_director.pool(
+                    set(self.cli.animation_groups.keys()),
+                    self._ctx_anim(),
+                    AnimIntent.SOUND,
+                )
+                if pool and self._fila.enviar_anim(pool, prioridade=False):
+                    self._ultima_reacao_fala = agora
+                    logger.info("Voz ambiente: reação leve (%s)", texto[:30])
+            return
         if parece_latido(texto):
             self._reagir_latido(texto)
             return

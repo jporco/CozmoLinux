@@ -38,10 +38,17 @@ def _head_neutro(cli: pycozmo.Client) -> None:
 
 
 def modo_clip(cli: pycozmo.Client, grupo: str, segundos: float) -> None:
+    # Este script e exclusivo para uso na base. Clips oficiais tambem contem
+    # keyframes de rodas/lift; sem o patch o teste pode tirar o Cozmo do dock.
+    from cozmo_companion.core.anim_base_patch import (
+        instalar_play_anim_sem_rodas_na_base,
+    )
+
     cli.load_anims()
+    instalar_play_anim_sem_rodas_na_base(cli, preso_na_base_fn=lambda: True)
     cli.enable_procedural_face(False)
     cli.enable_animations(True)
-    print(f"play_anim_group({grupo!r}) — 30fps oficial")
+    print(f"play_anim_group({grupo!r}) — 30fps, corpo imobilizado na base")
     cli.play_anim_group(grupo)
     time.sleep(segundos)
 

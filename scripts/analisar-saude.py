@@ -4,13 +4,29 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "cozmo-companheiro.log"
-SAUDE = ROOT / "data" / "cozmo-saude.json"
+
+
+def _health_file() -> Path:
+    raw = os.environ.get("COZMO_HEALTH_FILE", "").strip()
+    if not raw:
+        try:
+            for line in (ROOT / "config.env").read_text(encoding="utf-8").splitlines():
+                if line.startswith("COZMO_HEALTH_FILE="):
+                    raw = line.split("=", 1)[1].strip()
+                    break
+        except OSError:
+            pass
+    return Path(raw).expanduser() if raw else ROOT / "data" / "cozmo-saude.json"
+
+
+SAUDE = _health_file()
 DEBUG = ROOT / ".cursor" / "debug-5e34e1.log"
 REL = ROOT / "data" / "qa-relatorio.json"
 

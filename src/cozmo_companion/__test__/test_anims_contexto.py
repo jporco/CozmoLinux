@@ -43,15 +43,14 @@ class TestAnimsContexto(unittest.TestCase):
             ContextoAnim.MESA,
         )
 
-    def test_base_bloqueia_surprise(self):
+    def test_base_permite_surprise_sanitizado(self):
         pool = filtrar_por_contexto(GRUPOS_REACAO, self.disp, ContextoAnim.BASE)
-        self.assertNotIn("Surprise", pool)
-        self.assertNotIn("ReactToPokeStartled", pool)
+        self.assertIn("Surprise", pool)
         self.assertIn("ReactToPokeReaction", pool)
 
-    def test_carregador_bloqueia_surprise(self):
+    def test_carregador_permite_surprise_sanitizado(self):
         pool = filtrar_por_contexto(GRUPOS_MESA, self.disp, ContextoAnim.CARREGADOR)
-        self.assertNotIn("Surprise", pool)
+        self.assertIn("Surprise", pool)
         self.assertNotIn("ReactToCliff", pool)
         self.assertIn("NeutralFace", pool)
 
@@ -69,10 +68,10 @@ class TestAnimsContexto(unittest.TestCase):
             nome = escolher_ctx(self.disp, GRUPOS_REACAO, ContextoAnim.MESA)
             self.assertIn(nome, ("Surprise", "ReactToPokeStartled", "ReactToPokeReaction", "InterestedFace"))
 
-    def test_escolher_ctx_base_nunca_surprise(self):
+    def test_escolher_ctx_base_pode_usar_reacao_sanitizada(self):
         for _ in range(20):
             nome = escolher_ctx(self.disp, GRUPOS_REACAO, ContextoAnim.BASE)
-            self.assertNotIn(nome, ("Surprise", "ReactToPokeStartled", "ReactToCliff"))
+            self.assertIn(nome, ("Surprise", "ReactToPokeStartled", "ReactToCliff", "ReactToPokeReaction", "InterestedFace"))
 
 
 if __name__ == "__main__":

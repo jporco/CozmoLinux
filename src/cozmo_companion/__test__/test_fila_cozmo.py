@@ -19,6 +19,7 @@ class TestFilaCozmo(unittest.TestCase):
         os.environ["COZMO_MAX_TTS_SINAL_WORDS"] = "1"
         os.environ["COZMO_MAX_OLED_CHARS"] = "16"
         os.environ["COZMO_FILA_TIMEOUT_S"] = "0.15"
+        os.environ["COZMO_BASE_STABLE_OLED"] = "0"
         self.gov = GovernadorCozmo()
         self.gov._tokens = 50.0
         self.tocadas: list[tuple[str, ...]] = []
@@ -73,6 +74,20 @@ class TestFilaCozmo(unittest.TestCase):
         self.assertTrue(self.fila.vazia)
         self.assertEqual(self.oleds, ["Mesa"])
 
+    def test_fim_oled_forcado_base_restaura_keeper(self) -> None:
+        self.fila.enviar_oled("Livre", segundos=0.05, prioridade=True, forcado=True)
+        cli = MagicMock()
+        cli.battery_voltage = 4.0
+        with patch(
+            "cozmo_companion.core.motor_cozmo.liberar_base_oled_loop_hold"
+        ) as liberar:
+            with patch.object(self.fila, "_restaurar_rosto_pos_item") as restaurar:
+                self.fila.tick(cli)
+                time.sleep(0.14)
+                self.fila.tick(cli)
+        liberar.assert_called()
+        restaurar.assert_called_with(cli)
+
     def test_rejeita_tts_pesado(self) -> None:
         self.assertFalse(self.fila.enviar_sinal_tts("uma duas palavras"))
         self.assertEqual(len(self.fila._fila), 0)
@@ -100,6 +115,32 @@ class TestFilaCozmo(unittest.TestCase):
         time.sleep(0.2)
         self.fila.tick(cli)
         self.assertEqual(self.sinais, ["Ei"])
+
+    def test_base_estavel_converte_anim_em_reacao_oled(self) -> None:
+        os.environ["COZMO_BASE_STABLE_OLED"] = "1"
+        self.fila.enviar_anim(("CodeLabReactHappy",), prioridade=True)
+        cli = MagicMock()
+        with patch(
+            "cozmo_companion.core.motor_cozmo.variar_clip_base_oled",
+            return_value=True,
+        ) as variar:
+            self.fila.tick(cli)
+        variar.assert_called_once_with(cli, forcado=True)
+        self.assertEqual(self.tocadas, [])
+        self.assertEqual(self.fila.estado, EstadoFila.IDLE)
+
+    def test_base_estavel_converte_oled_texto_em_reacao_oled(self) -> None:
+        os.environ["COZMO_BASE_STABLE_OLED"] = "1"
+        self.fila.enviar_oled("Telegram", segundos=0.2, prioridade=True, forcado=True)
+        cli = MagicMock()
+        with patch(
+            "cozmo_companion.core.motor_cozmo.variar_clip_base_oled",
+            return_value=True,
+        ) as variar:
+            self.fila.tick(cli)
+        variar.assert_called_once_with(cli, forcado=True)
+        self.assertEqual(self.oleds, [])
+        self.assertEqual(self.fila.estado, EstadoFila.IDLE)
 
     def test_notif_oled_na_base(self) -> None:
         self.fila.na_base = lambda: True
@@ -332,9 +373,11 @@ class TestFilaCozmo(unittest.TestCase):
         self.assertEqual(len(self.fila._fila), 0)
 
     @patch.object(GovernadorCozmo, "reservar", return_value=False)
-    def test_sem_budget_nao_enfileira(self, _res: MagicMock) -> None:
-        self.assertFalse(self.fila.enviar_anim(("X",)))
-        self.assertEqual(len(self.fila._fila), 0)
+    def test_sem_budget_ainda_enfileira_anim(self, _res: MagicMock) -> None:
+        """ANIM não reserva no enqueue — quem reserva de verdade é tocar_grupo
+        no despacho (2 reservas na mesma janela sempre derrubava a 2ª)."""
+        self.assertTrue(self.fila.enviar_anim(("X",)))
+        self.assertEqual(len(self.fila._fila), 1)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,13 @@ def manter_logs(root: Path, estado: EstadoGuardian) -> bool:
     """Roda limpar-logs.sh no máximo 1x por GUARDIAN_LOG_TRIM_S (padrão 24h)."""
     intervalo = float(os.environ.get("GUARDIAN_LOG_TRIM_S", "86400"))
     agora = time.monotonic()
+    boot_grace = float(os.environ.get("GUARDIAN_LOG_TRIM_BOOT_GRACE_S", "600"))
+    if (
+        estado.ultimo_trim_log <= 0
+        and boot_grace > 0
+        and agora - estado.iniciado_em < boot_grace
+    ):
+        return False
     if estado.ultimo_trim_log > 0 and agora - estado.ultimo_trim_log < intervalo:
         return False
 

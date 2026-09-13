@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-import time
 from dataclasses import dataclass
 
 from cozmo_companion.notifications.core.listener import Notificacao

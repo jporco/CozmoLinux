@@ -10,6 +10,9 @@ import time
 from collections import deque
 from pathlib import Path
 
+from cozmo_companion.core.config import network_tuning
+from cozmo_companion.core.paths import health_file
+
 logger = logging.getLogger("cozmo.conexao")
 
 ROOT = Path(os.environ.get("COZMO_COMPANION_ROOT", "/mnt/G/PROJETOS/cozmo-companion"))
@@ -20,6 +23,7 @@ _ultimo_aviso_wifi_setup = 0.0
 _ultimo_wifi_tentativa = 0.0
 _ultimo_log_offline = 0.0
 _ultimo_rescan_wifi = 0.0
+_wlan0_preso_desde = 0.0
 
 
 def cozmo_rota_ap() -> bool:
@@ -67,19 +71,41 @@ def wlan0_estado() -> tuple[str, str]:
 
 
 def wlan0_preso_cozmo() -> bool:
-    """wlan0 tentando Cozmo sem rota direta — NM preso ou rota via casa."""
+    """wlan0 em Cozmo_* morto de forma PERSISTENTE — nunca durante o handshake.
+
+    O bug antigo derrubava o wlan0 no meio da conexão (estado transitório
+    'connecting'/'config', rota ainda não subiu), criando um loop conectar→derrubar
+    que impedia QUALQUER comunicação com o robô. Aqui: estados transitórios nunca
+    contam como preso, e só liberamos após carência contínua sem rota/ping.
+    """
+    global _wlan0_preso_desde
     estado, conexao = wlan0_estado()
     if not conexao.upper().startswith("COZMO_"):
+        _wlan0_preso_desde = 0.0
+        return False
+    # Handshake/DHCP/auth em progresso → está conectando, não derrubar.
+    transitorio = (
+        "connecting" in estado
+        or "prepare" in estado
+        or "config" in estado  # cobre "(config)" e "(ip config)"
+        or "ip check" in estado
+        or "need auth" in estado
+        or "secondaries" in estado
+    )
+    if transitorio:
+        _wlan0_preso_desde = 0.0
         return False
     if cozmo_rota_ap() and cozmo_alcanavel():
+        _wlan0_preso_desde = 0.0
         return False
-    preso = (
-        "connecting" in estado
-        or "failed" in estado
-        or "disconnected" in estado
-        or not cozmo_rota_ap()
-    )
-    return preso
+    # Conectado a Cozmo_* mas sem rota/ping — candidato a preso; exige persistência
+    # para dar tempo da rota/DHCP subir antes de qualquer disconnect.
+    agora = time.monotonic()
+    if _wlan0_preso_desde <= 0:
+        _wlan0_preso_desde = agora
+        return False
+    graca = float(os.environ.get("COZMO_WLAN0_PRESO_GRACA_S", "15"))
+    return agora - _wlan0_preso_desde >= graca
 
 
 def liberar_wlan0_cozmo() -> bool:
@@ -106,13 +132,24 @@ def nunca_desconectar_wifi() -> bool:
 def cozmo_alcanavel() -> bool:
     if not cozmo_rota_ap():
         return False
+    # Firmware do Cozmo dorme o rádio quando o tráfego é esparso: a 1ª resposta
+    # pode levar centenas de ms a ~1s. -W2 dava falso "offline"/wifi=FAIL e disparava
+    # recuperação à toa. 2 tentativas com timeout maior tolera o wake do rádio.
+    timeout_s = os.environ.get("COZMO_PING_TIMEOUT_S", "4")
     try:
         r = subprocess.run(
-            ["ping", "-c1", "-W2", ROBOT_IP],
+            ["ping", "-c1", "-W", timeout_s, ROBOT_IP],
             capture_output=True,
-            timeout=5,
+            timeout=float(timeout_s) + 1.5,
         )
-        return r.returncode == 0
+        if r.returncode == 0:
+            return True
+        r2 = subprocess.run(
+            ["ping", "-c1", "-W", timeout_s, ROBOT_IP],
+            capture_output=True,
+            timeout=float(timeout_s) + 1.5,
+        )
+        return r2.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
 
@@ -132,7 +169,12 @@ def cozmo_ssid_visivel(*, rescan: bool = False) -> bool:
     try:
         if rescan:
             global _ultimo_rescan_wifi
-            intervalo = float(os.environ.get("COZMO_WIFI_RESCAN_S", "600"))
+            nome_intervalo = (
+                "COZMO_WIFI_RESCAN_OFFLINE_S"
+                if not cozmo_rota_ap()
+                else "COZMO_WIFI_RESCAN_S"
+            )
+            intervalo = float(os.environ.get(nome_intervalo, "600"))
             if time.monotonic() - _ultimo_rescan_wifi >= intervalo:
                 _ultimo_rescan_wifi = time.monotonic()
                 subprocess.run(
@@ -168,7 +210,7 @@ def pode_tentar_wifi(*, forcado: bool = False) -> bool:
         cooldown = float(
             os.environ.get(
                 "COZMO_WIFI_ROUTE_RETRY_S",
-                os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"),
+                str(network_tuning().wifi_offline_retry_s),
             )
         )
         if time.monotonic() - _ultimo_wifi_tentativa < cooldown:
@@ -186,7 +228,7 @@ def pode_tentar_wifi(*, forcado: bool = False) -> bool:
     )
     if not cozmo_ssid_visivel(rescan=rescan):
         if nunca_desconectar_wifi() and preso:
-            cooldown = float(os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"))
+            cooldown = network_tuning().wifi_offline_retry_s
             return time.monotonic() - _ultimo_wifi_tentativa >= cooldown
         return False
     cooldown = float(os.environ.get("COZMO_WIFI_COOLDOWN_S", "60"))
@@ -205,22 +247,26 @@ def log_offline_quieto(msg: str = "Cozmo offline — aguardando (sem mexer Wi-Fi
 
 
 def aguardar_cozmo_online(timeout_s: float) -> bool:
-    """Espera ping com backoff — só tenta Wi-Fi se AP Cozmo visível."""
+    """Espera ping e tenta recuperar o AP durante toda a janela."""
     global _ultimo_wifi_tentativa
     fim = time.monotonic() + timeout_s
+    proxima_wifi = 0.0
+    retry_wifi = float(os.environ.get("COZMO_WIFI_OFFLINE_RETRY_S", "20"))
     while time.monotonic() < fim:
         if cozmo_alcanavel():
             return True
+        agora = time.monotonic()
+        if agora >= proxima_wifi:
+            visivel = cozmo_ssid_visivel(rescan=True)
+            preso = wlan0_preso_cozmo()
+            if (visivel or preso) and pode_tentar_wifi(forcado=preso):
+                _ultimo_wifi_tentativa = agora
+                logger.info("Tentando recuperar Wi-Fi do Cozmo (AP offline).")
+                if reconectar_wifi(forcado=preso) and cozmo_alcanavel():
+                    return True
+            proxima_wifi = agora + max(5.0, retry_wifi)
         time.sleep(2.0)
-    visivel = cozmo_ssid_visivel(rescan=True)
-    if (visivel or wlan0_preso_cozmo() or not cozmo_rota_ap()) and pode_tentar_wifi(
-        forcado=not cozmo_rota_ap()
-    ):
-        _ultimo_wifi_tentativa = time.monotonic()
-        if reconectar_wifi(forcado=not cozmo_rota_ap()):
-            return cozmo_alcanavel()
-    else:
-        log_offline_quieto()
+    log_offline_quieto()
     return cozmo_alcanavel()
 
 
@@ -230,7 +276,10 @@ def reconectar_wifi(*, forcado: bool = False) -> bool:
         return True
 
     if wlan0_preso_cozmo():
-        liberar_wlan0_cozmo()
+        # Não derrube a interface: o NetworkManager interpreta isso como uma
+        # solicitação explícita do usuário e deixa o rádio desconectado quando
+        # o AP do Cozmo some. O script de conexão já faz uma ativação explícita
+        # do perfil quando o SSID voltar a aparecer.
         forcado = True
 
     if not pode_tentar_wifi(forcado=forcado):
@@ -362,6 +411,8 @@ def diagnostico(cli) -> dict:
         "recv_frames": getattr(recv, "received_frames", 0) if recv else 0,
         "sent_frames": getattr(send, "sent_frames", 0) if send else 0,
         "discarded": getattr(recv, "discarded_frames", 0) if recv else 0,
+        "recv_packets": getattr(recv, "received_packets", 0) if recv else 0,
+        "recv_bytes": getattr(recv, "received_bytes", 0) if recv else 0,
     }
 
 
@@ -435,7 +486,7 @@ def udp_saturado_por_delta(drx: int, dtx: int) -> bool:
     """RX parado na janela com TX alto = sessão morta (não ratio acumulado)."""
     if drx > 0:
         return False
-    return dtx >= int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "320"))
+    return dtx >= network_tuning().udp_delta_tx_sat
 
 
 def udp_leve(cli, limite: float | None = None) -> bool:
@@ -452,7 +503,7 @@ def gravar_saude(cli, *, extra: dict | None = None) -> None:
     """Snapshot para QA automático (data/cozmo-saude.json)."""
     try:
         d = diagnostico(cli)
-        path = ROOT / "data" / "cozmo-saude.json"
+        path = health_file()
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -466,7 +517,32 @@ def gravar_saude(cli, *, extra: dict | None = None) -> None:
         }
         if extra:
             payload.update(extra)
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
+
+
+def gravar_saude_offline() -> None:
+    """Mantém o heartbeat honesto enquanto ainda não há sessão UDP."""
+    try:
+        path = health_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "rx": 0,
+            "tx": 0,
+            "ratio_acum": 0.0,
+            "bateria_v": 0.0,
+            "estado": "OFFLINE",
+            "fase": "offline",
+            "rx_ok": False,
+            "wifi_ok": False,
+        }
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
     except OSError:
         pass
 
@@ -607,16 +683,30 @@ class MonitorRx:
         proc = procedural_ativo(cli)
         ppclip = ppclip_base_ativo(cli)
         anim_tx = proc or ppclip
-        proc_stall_s = float(os.environ.get("COZMO_PROC_RX_STALL_S", "120"))
+        proc_stall_s = network_tuning().proc_rx_stall_s
         ppclip_stall_s = float(os.environ.get("COZMO_PPCLIP_RX_STALL_S", "120"))
         proc_ratio_max = float(os.environ.get("COZMO_PROC_STALL_RATIO_MAX", "8.0"))
 
         tx_idle_pp = int(os.environ.get("GOV_PPCLIP_TX_IDLE_DELTA", "80"))
         tx_min = int(os.environ.get("COZMO_RX_STALL_TX_MIN", "200"))
-        tx_sat = int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "320"))
+        tx_sat = network_tuning().udp_delta_tx_sat
         dead_s = float(os.environ.get("COZMO01_RX_DEAD_S", "8"))
         tx_delta = tx - self._tx
         rx_parado_s = agora - self._rx_em
+
+        # Um contador RX acumulado grande não torna a sessão saudável. Antes,
+        # a razão histórica tx/rx podia ficar baixa para sempre e mascarava um
+        # AP ainda associado, mas sem ARP/UDP: o keeper continuava escrevendo
+        # na sessão morta por minutos. Um RX realmente parado sem alcance por
+        # esta janela encerra o fluxo visual e deixa a recuperação de Wi-Fi
+        # assumir. RX que volta passa no bloco inicial acima.
+        hard_dead_s = float(os.environ.get("COZMO_RX_HARD_DEAD_S", "20"))
+        if (
+            rx == self._rx
+            and rx_parado_s >= max(dead_s, hard_dead_s)
+            and not cozmo_alcanavel()
+        ):
+            return False
 
         if (
             ppclip
@@ -650,11 +740,11 @@ class MonitorRx:
             return True
 
         # TX alto + RX parado = COZMO 01 — ppclip só tolera TX baixo (acima), não 120s cego.
-        stall_parado = float(os.environ.get("COZMO_RX_STALL_PARADO_S", "25"))
+        stall_parado = network_tuning().rx_stall_parado_s
         if proc and not ppclip:
             stall_parado = min(
                 stall_parado,
-                float(os.environ.get("COZMO_PROC_RX_STALL_S", "20")),
+                network_tuning().proc_rx_stall_s,
             )
         if (
             rx == self._rx
@@ -680,7 +770,7 @@ class MonitorRx:
                     return False
 
         # RX parado com TX subindo — só stall se ratio acum alto (procedural na base).
-        stall_rx_s = float(os.environ.get("COZMO_RX_STALL_PARADO_S", "45"))
+        stall_rx_s = network_tuning().rx_stall_parado_s
         if (
             rx == self._rx
             and tx_delta >= tx_min
@@ -728,7 +818,7 @@ def link_rx_congelado(cli, monitor: MonitorRx, medidor: MedidorUdp) -> bool:
     drx, dtx, _ = medidor.amostra(cli)
     if drx > 0:
         return False
-    return dtx >= int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "520"))
+    return dtx >= network_tuning().udp_delta_tx_sat
 
 
 def precisa_reconectar_udp(
@@ -746,7 +836,7 @@ def precisa_reconectar_udp(
 
     drx, dtx, r_delta = medidor.amostra(cli)
     ratio_alto = float(os.environ.get("GOV_RX_RATIO_ALTO", "2.0"))
-    tx_sat = int(os.environ.get("COZMO_UDP_DELTA_TX_SAT", "520"))
+    tx_sat = network_tuning().udp_delta_tx_sat
 
     if drx <= 0 and dtx >= tx_sat:
         return True
@@ -801,8 +891,8 @@ def recuperar_sessao_inplace(cli) -> bool:
         else:
             cli.cancel_anim()
             cli.stop_all_motors()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao pausar animação na recuperação in-place: %s", exc)
     time.sleep(float(os.environ.get("COZMO_INPLACE_PAUSE_S", "1.5")))
     d = diagnostico(cli)
     rx_depois = d["recv_frames"]
@@ -846,8 +936,8 @@ def aguardar_pronto(cli, timeout_s: float | None = None) -> bool:
             if st != 0:
                 logger.info("Cozmo pronto (status=%#x, %.2fV)", st, v)
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("RobotState ainda indisponível durante inicialização: %s", exc)
         time.sleep(0.25)
 
     v = getattr(cli, "battery_voltage", 0.0)
@@ -866,9 +956,28 @@ def abrir_cliente(
     protocol_log_level: str = "WARNING",
     robot_log_level: str = "WARNING",
 ):
+    import pycozmo
     from pycozmo import client as cozmo_client
     from pycozmo.run import setup_basic_logging
 
+    # setup_basic_logging adiciona um StreamHandler novo a cada chamada sem remover
+    # os antigos. Como reabrimos o cliente a cada reconexão, os handlers se acumulam
+    # e cada linha do pycozmo passa a ser escrita N vezes — o I/O síncrono trava o
+    # loop principal e gera falsos COZMO 01 (bola de neve). Limpa antes de reconfigurar.
+    for _lg in (
+        pycozmo.logger,
+        pycozmo.logger_protocol,
+        pycozmo.logger_robot,
+        pycozmo.logger_reaction,
+        pycozmo.logger_behavior,
+        pycozmo.logger_animation,
+    ):
+        for _h in list(_lg.handlers):
+            _lg.removeHandler(_h)
+            try:
+                _h.close()
+            except Exception as exc:
+                logger.debug("Falha ao fechar handler de log antigo: %s", exc)
     setup_basic_logging(
         log_level=log_level,
         protocol_log_level=protocol_log_level,
@@ -957,8 +1066,8 @@ def fechar_cliente(cli, *, pausa: float | None = None, forcado: bool = False) ->
     if nunca_desconectar_udp() and not forcado:
         try:
             cli.stop()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Falha no stop local sem Disconnect UDP: %s", exc)
         pausa = min(pausa, float(os.environ.get("COZMO_DISCONNECT_PAUSE_MIN_S", "0.3")))
         logger.info("Stop local sem Disconnect UDP — pausa %.0fs", pausa)
         time.sleep(pausa)
@@ -970,12 +1079,12 @@ def fechar_cliente(cli, *, pausa: float | None = None, forcado: bool = False) ->
     try:
         if cli.conn.state == Connection.CONNECTED:
             cli.disconnect()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao desconectar cliente: %s", exc)
     try:
         cli.stop()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Falha ao parar cliente: %s", exc)
     logger.info("Aguardando %.0fs para o Cozmo fechar sessão UDP...", pausa)
     time.sleep(pausa)
 

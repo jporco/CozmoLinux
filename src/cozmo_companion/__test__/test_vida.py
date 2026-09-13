@@ -250,10 +250,21 @@ class TestVida(unittest.TestCase):
         old_chance = vida_mod.SONO_RONCO_CHANCE
         vida_mod.SONO_RONCO_CHANCE = 1.0
         try:
-            vida._tick_ronco(cli)
+            with patch.dict(os.environ, {"COZMO_BASE_STABLE_OLED": "0"}, clear=False):
+                with patch.object(vida_mod._motor, "sono_oled_texto_ativo", return_value=False):
+                    with patch.object(vida_mod._motor, "modo_sono_oled_ativo", return_value=False):
+                        with patch.object(vida, "_pick", return_value="Hiccup"):
+                            with patch.object(vida, "_executar_anim") as executar:
+                                vida._tick_ronco(cli)
         finally:
             vida_mod.SONO_RONCO_CHANCE = old_chance
-        cli.play_anim_group.assert_called_with("Hiccup")
+        executar.assert_called_once_with(
+            cli,
+            "Hiccup",
+            na_base=True,
+            preso_na_base=True,
+            hold_s=4.0,
+        )
 
     def test_sono_nao_para_ppclip(self) -> None:
         cli = MagicMock()

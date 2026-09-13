@@ -6,11 +6,28 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SENHA="${1:-}"
 SAFE="${COZMO_WIFI_SAFE:-1}"
-IFACE="${COZMO_WIFI_IFACE:-wlan0}"
+IFACE="${COZMO_WIFI_IFACE:-}"
+NMCLI_BIN="$(type -P nmcli || true)"
+
+# NetworkManager pode bloquear durante uma varredura ou ao trocar o MAC da
+# interface. Nunca deixe esse bloqueio prender o loop de recuperação do
+# companion.
+nmcli() {
+  [[ -n "$NMCLI_BIN" ]] || return 127
+  timeout --foreground "${COZMO_NMCLI_TIMEOUT_S:-6}" "$NMCLI_BIN" "$@"
+}
 
 if [[ -z "$SENHA" && -f "$ROOT/config.env" ]]; then
   SENHA="$(grep -E '^COZMO_WIFI_SENHA=' "$ROOT/config.env" | cut -d= -f2- || true)"
 fi
+
+# O serviço recebe config.env via EnvironmentFile, mas quem chama este script
+# manualmente não. Leia somente a interface salva (sem executar o arquivo nem
+# carregar segredos) para ambos os caminhos usarem a mesma placa Wi-Fi.
+if [[ -z "$IFACE" && -f "$ROOT/config.env" ]]; then
+  IFACE="$(grep -E '^COZMO_WIFI_IFACE=' "$ROOT/config.env" | cut -d= -f2- | head -1 || true)"
+fi
+IFACE="${IFACE:-wlan0}"
 
 if ping -c1 -W2 172.31.1.1 >/dev/null 2>&1; then
   ip route get 172.31.1.1 2>/dev/null | grep -q ' via ' && {
@@ -22,61 +39,55 @@ if ping -c1 -W2 172.31.1.1 >/dev/null 2>&1; then
 fi
 
 ajustar_perfil_cozmo() {
-  local ssid="$1"
+  local ssid="$1" never_default route_metric autoconnect priority powersave iface_atual
   [[ -z "$ssid" ]] && return 0
+  never_default="$(nmcli -g ipv4.never-default connection show "$ssid" 2>/dev/null || true)"
+  route_metric="$(nmcli -g ipv4.route-metric connection show "$ssid" 2>/dev/null || true)"
+  autoconnect="$(nmcli -g connection.autoconnect connection show "$ssid" 2>/dev/null || true)"
+  priority="$(nmcli -g connection.autoconnect-priority connection show "$ssid" 2>/dev/null || true)"
+  powersave="$(nmcli -g 802-11-wireless.powersave connection show "$ssid" 2>/dev/null || true)"
+  iface_atual="$(nmcli -g connection.interface-name connection show "$ssid" 2>/dev/null || true)"
+  if [[ "$never_default" == "yes" && "$route_metric" == "850" \
+    && "$autoconnect" == "yes" && "$priority" == "50" \
+    && ("$powersave" == "2" || "$powersave" == "disable") \
+    && "$iface_atual" == "$IFACE" ]]; then
+    return 0
+  fi
   nmcli connection modify "$ssid" \
     ipv4.never-default yes \
     ipv4.route-metric 850 \
     connection.autoconnect yes \
     connection.autoconnect-priority 50 \
+    connection.interface-name "$IFACE" \
     802-11-wireless.powersave 2 \
     >/dev/null 2>&1 || true
 }
 
-liberar_wlan0_preso() {
-  local estado conexao
-  estado="$(nmcli -t -f GENERAL.STATE dev show "$IFACE" 2>/dev/null | cut -d: -f2- | tr '[:upper:]' '[:lower:]' || true)"
-  conexao="$(nmcli -t -f GENERAL.CONNECTION dev show "$IFACE" 2>/dev/null | cut -d: -f2- || true)"
-  if [[ "$conexao" == Cozmo_* ]] && [[ "$estado" == *connecting* || "$estado" == *failed* || "$estado" == *disconnected* ]]; then
-    nmcli dev disconnect "$IFACE" >/dev/null 2>&1 || true
-    sleep 1
-    return 0
-  fi
-  if ip route get 172.31.1.1 2>/dev/null | grep -q ' via '; then
-    nmcli dev disconnect "$IFACE" >/dev/null 2>&1 || true
-    sleep 1
-  fi
-  return 0
-}
-
-liberar_wlan0_preso
-
 SSID="$(nmcli -t -f NAME connection show 2>/dev/null | grep -i '^Cozmo_' | head -1 || true)"
 [[ -n "$SSID" ]] && ajustar_perfil_cozmo "$SSID"
 
-# Modo seguro: exige AP visível antes de subir perfil (evita wlan0 preso).
+# Modo seguro: só sobe o perfil quando o AP estiver visível. Não desconecte um
+# perfil já ativo: na MT7921e desta máquina uma desassociação durante falha de
+# ARP pode travar o firmware do rádio e derrubar o Wi-Fi inteiro.
 if [[ "$SAFE" == "1" ]]; then
   nmcli dev wifi rescan >/dev/null 2>&1 || true
   sleep 1
   SSID_VIS="$(nmcli -t -f SSID dev wifi list 2>/dev/null | grep -i '^Cozmo_' | head -1 || true)"
   if [[ -z "$SSID_VIS" ]]; then
-    if [[ -n "$SSID" ]]; then
-      echo "Cozmo offline — sem AP visível (modo seguro, Wi-Fi PC intacto)."
-      exit 2
-    fi
     echo "Cozmo offline — sem AP visível (modo seguro, Wi-Fi PC intacto)."
     exit 2
+  else
+    SSID="$SSID_VIS"
   fi
-  SSID="$SSID_VIS"
 fi
 
 if [[ -n "$SSID" ]]; then
   ajustar_perfil_cozmo "$SSID"
   nmcli radio wifi on >/dev/null 2>&1 || true
   if [[ "$SAFE" == "1" ]]; then
-    nmcli connection up "$SSID" >/dev/null 2>&1 || true
+    nmcli connection up "$SSID" ifname "$IFACE" >/dev/null 2>&1 || true
   else
-    nmcli connection up "$SSID" >/dev/null 2>&1 || true
+    nmcli connection up "$SSID" ifname "$IFACE" >/dev/null 2>&1 || true
   fi
   for _ in 1 2 3 4 5 6; do
     sleep 2
@@ -121,7 +132,7 @@ fi
 ajustar_perfil_cozmo "$SSID"
 
 if [[ "${SIGNAL:-0}" -lt 5 ]]; then
-  nmcli connection up "$SSID" >/dev/null 2>&1 || true
+  nmcli connection up "$SSID" ifname "$IFACE" >/dev/null 2>&1 || true
   for _ in 1 2 3 4 5 6 7 8; do
     sleep 2
     if ping -c1 -W2 172.31.1.1 >/dev/null 2>&1 && ! ip route get 172.31.1.1 2>/dev/null | grep -q ' via '; then
@@ -140,7 +151,7 @@ if [[ -z "$SENHA" ]]; then
 fi
 
 if nmcli -t -f NAME connection show 2>/dev/null | grep -qx "$SSID"; then
-  nmcli connection up "$SSID" || exit 1
+  nmcli connection up "$SSID" ifname "$IFACE" || exit 1
 else
   nmcli dev wifi connect "$SSID" password "$SENHA" name "$SSID" || exit 1
   ajustar_perfil_cozmo "$SSID"

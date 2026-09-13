@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import random
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -129,6 +130,45 @@ def ppclip_tem_frame_oled(pp: pycozmo_anim.PreprocessedClip) -> bool:
     return False
 
 
+def ppclip_total_frames_oled(pp: pycozmo_anim.PreprocessedClip) -> int:
+    return sum(
+        1
+        for pacotes in pp.keyframes.values()
+        for pkt in pacotes
+        if isinstance(pkt, protocol_encoder.DisplayImage)
+        and getattr(pkt, "image", None)
+        and getattr(pkt, "image", None) != b"\x3f\x3f"
+    )
+
+
+def ppclips_validos_do_grupo(
+    cli: "pycozmo.Client", grupo: str, *, min_frames: int | None = None
+) -> tuple[tuple[str, pycozmo_anim.PreprocessedClip], ...]:
+    """Membros do grupo com OLED real, sem o sorteio instável do PyCozmo."""
+    ag = cli.animation_groups.get(grupo)
+    if not ag:
+        return ()
+    minimo = max(
+        2,
+        min_frames
+        if min_frames is not None
+        else int(os.environ.get("COZMO_BASE_OLED_MIN_FRAMES", "8")),
+    )
+    todos: list[tuple[str, pycozmo_anim.PreprocessedClip]] = []
+    fallback: list[tuple[str, pycozmo_anim.PreprocessedClip]] = []
+    for membro in ag.members:
+        try:
+            pp = obter_ppclip_sem_rodas(cli, membro.name)
+        except (KeyError, ValueError):
+            continue
+        total = ppclip_total_frames_oled(pp)
+        if total >= 2:
+            fallback.append((membro.name, pp))
+        if total >= minimo:
+            todos.append((membro.name, pp))
+    return tuple(todos or fallback)
+
+
 def obter_ppclip_sem_rodas(cli: "pycozmo.Client", anim_name: str) -> pycozmo_anim.PreprocessedClip:
     """Cache de ppclip editado para a base."""
     cache: dict[str, pycozmo_anim.PreprocessedClip] = getattr(cli, _CACHE_ATTR, None) or {}
@@ -175,14 +215,18 @@ def play_clip_sem_rodas_na_base(cli: "pycozmo.Client", anim_name: str) -> bool:
 
 
 def play_grupo_sem_rodas_na_base(cli: "pycozmo.Client", grupo: str) -> bool:
-    ag = cli.animation_groups.get(grupo)
-    if not ag:
-        return False
-    if play_clip_sem_rodas_na_base(cli, ag.choose_member().name):
-        return True
+    validos = ppclips_validos_do_grupo(cli, grupo)
+    if validos:
+        nome, pp = random.choice(validos)
+        try:
+            cli.play_anim_ppclip(pp)
+            logger.debug("Base grupo %s: membro OLED %s", grupo, nome)
+            return True
+        except Exception as exc:
+            logger.warning("Base grupo %s membro %s falhou: %s", grupo, nome, exc)
     for fb in _FALLBACK_GRUPOS:
-        ag2 = cli.animation_groups.get(fb)
-        if ag2 and play_clip_sem_rodas_na_base(cli, ag2.choose_member().name):
+        opcoes = ppclips_validos_do_grupo(cli, fb, min_frames=2)
+        if opcoes and play_clip_sem_rodas_na_base(cli, random.choice(opcoes)[0]):
             logger.info("Base OLED: fallback %s (grupo %s falhou)", fb, grupo)
             return True
     return False

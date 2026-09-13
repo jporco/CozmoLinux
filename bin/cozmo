@@ -5,6 +5,7 @@
 #   cozmo       — volume atual (%)
 #   cozmo +     — sobe ~10% (65535 máx)
 #   cozmo -     — desce ~10%
+#   cozmo reboot — reinicia a sessão e espera o Cozmo reconectar
 #
 # Persiste COZMO_VOLUME em config.env; se o companheiro estiver rodando,
 # grava data/volume.txt e o serviço aplica em ~0,25s (set_volume imediato).
@@ -14,7 +15,8 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_PATH="$(readlink -f -- "${BASH_SOURCE[0]}")"
+ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 CONFIG="${ROOT}/config.env"
 VOLUME_FILE="${COZMO_VOLUME_FILE:-${ROOT}/data/volume.txt}"
 MAX=65535
@@ -63,6 +65,57 @@ _apply_hot() {
   printf '%s\n' "$v" >"$VOLUME_FILE"
 }
 
+_health_file() {
+  local raw=""
+  if [[ -f "$CONFIG" ]]; then
+    raw="$(sed -n 's/^COZMO_HEALTH_FILE=//p' "$CONFIG" | tail -1 | tr -d ' \r')"
+  fi
+  if [[ -n "$raw" ]]; then
+    echo "${raw/#\~/$HOME}"
+  else
+    echo "$HOME/.local/state/cozmo-companion/cozmo-saude.json"
+  fi
+}
+
+_health_connected_after() {
+  local path="$1" old_mtime="$2" mtime
+  [[ -f "$path" ]] || return 1
+  mtime="$(stat -c '%Y' "$path" 2>/dev/null || echo 0)"
+  (( mtime > old_mtime )) || return 1
+  grep -qE '"estado"[[:space:]]*:[[:space:]]*"CONNECTED"' "$path" || return 1
+  ! grep -qE '"rx_ok"[[:space:]]*:[[:space:]]*false' "$path"
+}
+
+_reboot() {
+  command -v systemctl >/dev/null 2>&1 || {
+    echo "systemctl não encontrado" >&2
+    return 1
+  }
+
+  local health old_mtime deadline
+  health="$(_health_file)"
+  old_mtime="$(stat -c '%Y' "$health" 2>/dev/null || echo 0)"
+  deadline=$(( $(date +%s) + 90 ))
+
+  echo "Reiniciando sessão do Cozmo..."
+  systemctl --user restart cozmo-companion.service
+  # O guardian pode ter sido parado manualmente; garantir que ele também volte.
+  systemctl --user start cozmo-guardian.service 2>/dev/null || true
+
+  while (( $(date +%s) < deadline )); do
+    if systemctl --user is-active --quiet cozmo-companion.service \
+      && _health_connected_after "$health" "$old_mtime"; then
+      echo "Cozmo reconectado e sessão saudável."
+      return 0
+    fi
+    sleep 2
+  done
+
+  echo "Falha: o serviço não confirmou uma nova sessão CONNECTED em 90 s." >&2
+  systemctl --user status cozmo-companion.service --no-pager -l || true
+  return 1
+}
+
 _show() {
   local v pct
   v="$(_volume_clamp "$(_volume_raw)")"
@@ -100,8 +153,11 @@ case "${1:-}" in
   '-')
     _adjust "-$STEP"
     ;;
+  reboot)
+    _reboot
+    ;;
   *)
-    echo "Uso: cozmo | cozmo + | cozmo -" >&2
+    echo "Uso: cozmo | cozmo + | cozmo - | cozmo reboot" >&2
     exit 1
     ;;
 esac

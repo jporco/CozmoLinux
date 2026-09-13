@@ -29,6 +29,7 @@ class TestChargerStreamCheia(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
+                "COZMO_BASE_STABLE_OLED": "0",
                 "COZMO_CHARGER_PLAY_STREAM": "1",
                 "COZMO_CHARGER_STREAM_NA_CHEIA": "1",
             },

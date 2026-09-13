@@ -1,5 +1,5 @@
 [Unit]
-Description=Cozmo Guardian — connection and health monitor
+Description=Cozmo Guardian — monitor inteligente de conexão e carga
 After=network-online.target cozmo-companion.service
 Wants=cozmo-companion.service
 StartLimitIntervalSec=0
@@ -15,8 +15,11 @@ EnvironmentFile=-@INSTALL_DIR@/config.guardian.env
 ExecStart=@INSTALL_DIR@/.venv/bin/python -m cozmo_companion.guardian
 Restart=on-failure
 RestartSec=120
+TimeoutStopSec=5
+KillMode=mixed
 StandardOutput=append:@INSTALL_DIR@/guardian.log
 StandardError=append:@INSTALL_DIR@/guardian.log
 
 [Install]
+WantedBy=graphical-session.target
 WantedBy=default.target

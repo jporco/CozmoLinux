@@ -183,7 +183,11 @@ class FilaCozmo:
     def _reservar_gov(self, item: ItemFila) -> bool:
         prio = item.prioridade
         if item.tipo == TipoItem.ANIM:
-            return self.gov.reservar("anim", prioridade=prio)
+            # tocar_grupo (Companion._tocar_grupo) já reserva o orçamento "anim"
+            # no despacho — reservar de novo aqui fazia a 2ª reserva cair sempre
+            # dentro do intervalo mínimo da 1ª e o item ser descartado como
+            # "robô ocupado" mesmo livre. O dispatch já é o gate real.
+            return True
         if item.tipo == TipoItem.SOM:
             return self.gov.reservar("anim", prioridade=prio)
         if item.tipo == TipoItem.TTS:
@@ -514,6 +518,20 @@ class FilaCozmo:
     def _iniciar_item(self, cli: pycozmo.Client, item: ItemFila) -> None:
         self._estado_desde = time.monotonic()
         if item.tipo == TipoItem.ANIM:
+            if self.na_base():
+                from cozmo_companion.core.motor_cozmo import (
+                    base_oled_stable_only,
+                    variar_clip_base_oled,
+                )
+
+                if base_oled_stable_only():
+                    variar_clip_base_oled(cli, forcado=True)
+                    self._estado = EstadoFila.IDLE
+                    self._anim_aguardando = False
+                    self._anim_deadline = 0.0
+                    self._procedural_desligado = False
+                    logger.info("Fila — anim convertida em reação OLED estável")
+                    return
             self._desligar_procedural(cli)
             ok = self.tocar_grupo(item.grupos, prioridade=item.prioridade)
             if ok is False:
@@ -547,6 +565,18 @@ class FilaCozmo:
             )
             return
         if item.tipo == TipoItem.OLED:
+            if self.na_base() and os.environ.get("COZMO_BASE_STABLE_TEXT", "0") != "1":
+                from cozmo_companion.core.motor_cozmo import (
+                    base_oled_stable_only,
+                    variar_clip_base_oled,
+                )
+
+                if base_oled_stable_only():
+                    variar_clip_base_oled(cli, forcado=True)
+                    self._oled_fim = 0.0
+                    self._estado = EstadoFila.IDLE
+                    logger.info("Fila — OLED texto convertido em reação OLED estável")
+                    return
             if self.na_base() and item.oled_forcado:
                 from cozmo_companion.core.motor_cozmo import (
                     pausar_base_oled_para_texto,
@@ -637,6 +667,7 @@ class FilaCozmo:
         if not self.na_base():
             return
         from cozmo_companion.core.motor_cozmo import (
+            liberar_base_oled_loop_hold,
             ping_oob,
             religar_base_oled_pos_notif,
             segurar_base_oled_loop,
@@ -658,6 +689,12 @@ class FilaCozmo:
             manter_sono_ppclip,
             sono_oled_usa_texto,
         )
+
+        # Libera o hold artificial antes de religar — religar_base_oled_pos_notif
+        # aborta de imediato se o loop ainda estiver "segurado", então mantê-lo
+        # travado aqui deixava a tela presa no texto da notif até o watchdog
+        # periódico (companion.py) expirar o hold vários segundos depois.
+        liberar_base_oled_loop_hold(motivo="pos_quiet_drenado")
 
         if sono_oled_texto_ativo() or sono_oled_usa_texto():
             manter_sono_oled_texto(cli)
@@ -700,6 +737,8 @@ class FilaCozmo:
             self._quiet_fim = 0.0
             if self.na_base() and not self._fila:
                 self._drenar_rx_pos_quiet(cli)
+                self._restaurar_rosto_pos_item(cli)
+                self._procedural_desligado = False
 
         if self._estado == EstadoFila.WAIT_OLED:
             if agora < self._oled_fim:
@@ -713,6 +752,15 @@ class FilaCozmo:
                 return
             self._estado = EstadoFila.IDLE
             self._oled_fim = 0.0
+            if self.na_base() and not self._fila:
+                try:
+                    from cozmo_companion.core.motor_cozmo import liberar_base_oled_loop_hold
+
+                    liberar_base_oled_loop_hold(motivo="fim_oled_fila")
+                except Exception:
+                    pass
+                self._restaurar_rosto_pos_item(cli)
+                self._procedural_desligado = False
 
         if self._estado != EstadoFila.IDLE:
             return

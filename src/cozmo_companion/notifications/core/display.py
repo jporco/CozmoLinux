@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from cozmo_companion.notifications.core.listener import Notificacao
-from cozmo_companion.notifications.core.policy import max_oled_chars, nome_app_oled
+from cozmo_companion.notifications.core.policy import nome_app_oled
 
 
 def linhas_oled_notif(notif: Notificacao) -> tuple[str, str | None]:
